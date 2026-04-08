@@ -96,7 +96,7 @@ const serviceBadge = (ma: string, recarga: string, ph: string) => {
 /* ══════════════════════════════════════════
    COMPONENTE PRINCIPAL
    ══════════════════════════════════════════ */
-export default function DashboardPage() {
+export default function DashboardPage({ user, onLogout }: { user: { id: string; username: string; role: string; displayName: string }; onLogout: () => void }) {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [connected, setConnected] = useState(false);
 
@@ -137,7 +137,7 @@ export default function DashboardPage() {
   const [fComponente, setFComponente] = useState("");
 
   const [deleteModal, setDeleteModal] = useState(false);
-  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [_, setDeleteConfirmText] = useState("");
 
   const [exporting, setExporting] = useState(false);
 
@@ -149,6 +149,23 @@ export default function DashboardPage() {
 
   const [createEmpresaModal, setCreateEmpresaModal] = useState(false);
 
+  // Gestión usuarios (solo boss)
+  const [usersModal, setUsersModal] = useState(false);
+  const [usersList, setUsersList] = useState<any[]>([]);
+  const [userForm, setUserForm] = useState({ username: "", password: "", displayName: "", role: "worker" as string });
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [savingUser, setSavingUser] = useState(false);
+  const [userError, setUserError] = useState("");
+
+  // Archivados (solo boss)
+  const [archivedView, setArchivedView] = useState(false);
+  const [archivedEmpresas, setArchivedEmpresas] = useState<any[]>([]);
+  const [archivedExtintores, setArchivedExtintores] = useState<any[]>([]);
+  const [archivedTab, setArchivedTab] = useState<"empresas" | "extintores">("empresas");
+  const [loadingArchived, setLoadingArchived] = useState(false);
+
+  const [expandedArchived, setExpandedArchived] = useState<Record<string, boolean>>({});
+
   /* ── Socket setup ── */
   useEffect(() => {
     const s = io(BACKEND);
@@ -157,8 +174,17 @@ export default function DashboardPage() {
     s.on("connect", () => {
       setConnected(true);
       s.emit("empresa:list");
+
+      // Validar si el usuario sigue existiendo al refrescar la página
+      s.emit("auth:verify", { id: user.id }, (res: any) => {
+        if (res && res.valid === false) onLogout();
+      });
     });
-    s.on("disconnect", () => setConnected(false));
+
+    // Escuchar evento de expulsión en tiempo real
+    s.on("auth:force_logout", (data: { userId: string }) => {
+      if (data.userId === user.id) onLogout();
+    });
 
     s.on("empresa:list", (list: EmpresaItem[]) => {
       setEmpresas(list);
@@ -187,6 +213,24 @@ export default function DashboardPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!socket) return;
+    const handleArchivedChange = () => {
+      if (archivedView) {
+        socket.emit("empresa:deleted:list", { role: user.role }, (res: any) => {
+          if (res?.success) setArchivedEmpresas(res.list);
+        });
+        socket.emit("extintor:deleted:list", { role: user.role }, (res: any) => {
+          if (res?.success) setArchivedExtintores(res.rows);
+        });
+      }
+    };
+    socket.on("extintor:archived:changed", handleArchivedChange);
+    return () => {
+      socket.off("extintor:archived:changed", handleArchivedChange);
+    };
+  }, [socket, archivedView, user.role]);
+
   /* ── Seleccionar empresa ── */
   const openEmpresa = (emp: EmpresaItem) => {
     if (!socket) return;
@@ -202,6 +246,60 @@ export default function DashboardPage() {
     setView("list");
     setSelectedEmpresa(null);
     setExtintores([]);
+  };
+
+  const openArchivedView = () => {
+    if (!socket || (user.role !== "boss" && user.role !== "admin")) return;
+    setLoadingArchived(true);
+    setArchivedTab("empresas");
+
+    socket.emit("empresa:deleted:list", { role: user.role }, (res: any) => {
+      if (res?.success) setArchivedEmpresas(res.list);
+    });
+    socket.emit("extintor:deleted:list", { role: user.role }, (res: any) => {
+      setLoadingArchived(false);
+      if (res?.success) setArchivedExtintores(res.rows);
+    });
+    setArchivedView(true);
+  };
+
+  const refreshArchived = () => {
+    if (!socket) return;
+    socket.emit("empresa:deleted:list", { role: user.role }, (res: any) => {
+      if (res?.success) setArchivedEmpresas(res.list);
+    });
+    socket.emit("extintor:deleted:list", { role: user.role }, (res: any) => {
+      if (res?.success) setArchivedExtintores(res.rows);
+    });
+  };
+
+  const restoreEmpresa = (id: string) => {
+    if (!socket) return;
+    socket.emit("empresa:restore", { id, role: user.role }, (res: any) => {
+      if (res?.success) refreshArchived();
+    });
+  };
+
+  const hardDeleteEmpresa = (id: string) => {
+    if (!socket || !confirm("⚠️ ELIMINAR PERMANENTEMENTE esta empresa y todos sus extintores? Esta acción NO se puede deshacer.")) return;
+    socket.emit("empresa:hardDelete", { id, role: user.role }, (res: any) => {
+      if (res?.success) refreshArchived();
+    });
+  };
+
+  const restoreExtintor = (rowIndex: number, empresaId: string) => {
+    if (!socket) return;
+    socket.emit("extintor:restore", { rowIndex, id: empresaId, role: user.role }, (res: any) => {
+      if (res?.success) refreshArchived();
+    });
+  };
+
+  const hardDeleteExtintor = (rowIndex: number) => {
+    if (user.role !== "boss") return alert("Solo el Boss puede eliminar permanentemente");
+    if (!socket || !confirm("⚠️ ¿ELIMINAR PERMANENTEMENTE?")) return;
+    socket.emit("extintor:hardDelete", { rowIndex, role: user.role }, (res: any) => {
+      if (res?.success) refreshArchived();
+    });
   };
 
   const duplicateEmpresa = () => {
@@ -223,7 +321,7 @@ export default function DashboardPage() {
   const handleDeleteEmpresa = () => {
     if (!socket || !selectedEmpresa?.id) return;
     setSaving(true);
-    socket.emit("empresa:delete", { id: selectedEmpresa.id }, (res: any) => {
+    socket.emit("empresa:delete", { id: selectedEmpresa.id, role: user.role }, (res: any) => {
       setSaving(false);
       setDeleteModal(false);
       setDeleteConfirmText("");
@@ -385,7 +483,11 @@ export default function DashboardPage() {
   const saveExtintor = () => {
     if (!socket || !selectedEmpresa?.id) return;
     setSaving(true);
-    const payload = { ...extintorForm, id: selectedEmpresa.id };
+    const payload = { 
+      ...extintorForm, 
+      id: selectedEmpresa.id,
+      nSerie: !extintorForm.nSerie || extintorForm.nSerie.trim() === "" ? "S/N" : extintorForm.nSerie.trim()
+    };
 
     if (editingRowIndex !== null) {
       socket.emit("extintor:update", { ...payload, rowIndex: editingRowIndex }, (res: any) => {
@@ -400,9 +502,81 @@ export default function DashboardPage() {
     }
   };
 
+  const openUsersModal = () => {
+    if (!socket || user.role !== "boss") return;
+    socket.emit("auth:users:list", { role: user.role }, (res: any) => {
+      if (res?.success) setUsersList(res.users);
+    });
+    setUserForm({ username: "", password: "", displayName: "", role: "worker" });
+    setEditingUserId(null);
+    setUserError("");
+    setUsersModal(true);
+  };
+
+  const saveUser = () => {
+    if (!socket) return;
+    setSavingUser(true);
+    setUserError("");
+
+    if (editingUserId) {
+      socket.emit("auth:users:update", {
+        role: user.role,
+        userId: editingUserId,
+        username: userForm.username || undefined,
+        password: userForm.password || undefined,
+        displayName: userForm.displayName || undefined,
+        newRole: userForm.role as any,
+      }, (res: any) => {
+        setSavingUser(false);
+        if (res?.success) {
+          setEditingUserId(null);
+          setUserForm({ username: "", password: "", displayName: "", role: "worker" });
+          // Refrescar lista
+          socket!.emit("auth:users:list", { role: user.role }, (r: any) => {
+            if (r?.success) setUsersList(r.users);
+          });
+        } else setUserError(res?.error || "Error");
+      });
+    } else {
+      if (!userForm.username || !userForm.password) { setSavingUser(false); setUserError("Usuario y contraseña requeridos"); return; }
+      socket.emit("auth:users:create", {
+        role: user.role,
+        username: userForm.username,
+        password: userForm.password,
+        displayName: userForm.displayName,
+        newRole: userForm.role as any,
+      }, (res: any) => {
+        setSavingUser(false);
+        if (res?.success) {
+          setUserForm({ username: "", password: "", displayName: "", role: "worker" });
+          socket!.emit("auth:users:list", { role: user.role }, (r: any) => {
+            if (r?.success) setUsersList(r.users);
+          });
+        } else setUserError(res?.error || "Error");
+      });
+    }
+  };
+
+  const deleteUser = (userId: string) => {
+    if (!socket || !confirm("¿Eliminar este usuario?")) return;
+    socket.emit("auth:users:delete", { role: user.role, userId }, (res: any) => {
+      if (res?.success) {
+        socket!.emit("auth:users:list", { role: user.role }, (r: any) => {
+          if (r?.success) setUsersList(r.users);
+        });
+      }
+    });
+  };
+
+  const startEditUser = (u: any) => {
+    setEditingUserId(u.id);
+    setUserForm({ username: u.username, password: "", displayName: u.displayName, role: u.role });
+    setUserError("");
+  };
+
   const deleteExtintor = (rowIndex: number) => {
     if (!socket || !selectedEmpresa?.id || !confirm("¿Eliminar este extintor?")) return;
-    socket.emit("extintor:delete", { id: selectedEmpresa.id, rowIndex });
+    socket.emit("extintor:delete", { id: selectedEmpresa.id, rowIndex, role: user.role });
   };
 
   const setEF = (k: string, v: string) =>
@@ -489,11 +663,11 @@ export default function DashboardPage() {
     if (e.tobera === "SI") compCounts.tobera++;
   });
 
-  // Filtrado
+ // Filtrado
   const filteredExt = extintores.filter((e) => {
-    if (fMarca && e.marca !== fMarca) return false;
-    if (fAgente && e.agenteExtintor !== fAgente) return false;
-    if (fEstado && e.estadoExtintor !== fEstado) return false;
+    if (fMarca && (e.marca || "Sin definir") !== fMarca) return false;
+    if (fAgente && (e.agenteExtintor || "Sin definir") !== fAgente) return false;
+    if (fEstado && (e.estadoExtintor || "Sin definir") !== fEstado) return false;
     if (fServicio === "MA" && e.ma !== "SI") return false;
     if (fServicio === "PH" && e.ph !== "SI") return false;
     if (fServicio === "RE" && !e.recarga) return false;
@@ -510,37 +684,65 @@ export default function DashboardPage() {
 
       {/* ══ HEADER ══ */}
       <header className="sticky top-0 z-30 backdrop-blur-xl bg-zinc-950/80 border-b border-zinc-800/60">
-        <div className="max-w-400 mx-auto px-6 h-16 flex items-center justify-between">
+        <div className="max-w-400 mx-auto px-6 h-14 flex items-center justify-between">
+          {/* Izquierda: Logo + Back */}
           <div className="flex items-center gap-4">
             {view === "detail" && (
-              <button
-                onClick={goBack}
-                className="w-8 h-8 rounded-lg bg-zinc-800 hover:bg-zinc-700 flex items-center justify-center transition-colors text-zinc-400 hover:text-white"
-              >
+              <button onClick={goBack}
+                className="w-8 h-8 rounded-lg bg-zinc-800 hover:bg-zinc-700 flex items-center justify-center transition-colors text-zinc-400 hover:text-white">
                 ‹
               </button>
             )}
-            <div>
-              <h1 className="text-xl font-black tracking-[3px] text-white leading-none">
-                FAMA
-              </h1>
-              <p className="text-[9px] font-semibold tracking-[4px] uppercase text-red-500">
-                Dashboard
-              </p>
+            <div className="flex items-center gap-3">
+              <div>
+                <h1 className="text-lg font-black tracking-[3px] text-white leading-none">FAMA</h1>
+                <p className="text-[8px] font-semibold tracking-[4px] uppercase text-red-500">Dashboard</p>
+              </div>
+              <div className="h-6 w-px bg-zinc-800 mx-1" />
+              <span className="text-xs font-semibold text-zinc-500">
+                {empresas.length} empresa{empresas.length !== 1 && "s"}
+              </span>
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-zinc-900 border border-zinc-800">
+                <span className={`w-1.5 h-1.5 rounded-full ${connected ? "bg-emerald-400 animate-pulse" : "bg-zinc-600"}`} />
+                <span className="text-[10px] text-zinc-500 font-medium">
+                  {connected ? "En línea" : "Sin conexión"}
+                </span>
+              </div>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-zinc-500 hidden sm:inline">
-              {empresas.length} empresa{empresas.length !== 1 && "s"}
-            </span>
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-zinc-900 border border-zinc-800">
-              <span
-                className={`w-2 h-2 rounded-full ${connected ? "bg-emerald-400 animate-pulse" : "bg-zinc-600"}`}
-              />
-              <span className="text-[11px] text-zinc-400 font-medium">
-                {connected ? "En línea" : "Sin conexión"}
-              </span>
+          {/* Derecha: Usuario + Navegación */}
+          <div className="flex items-center gap-2">
+            {user.role === "boss" && (
+              <button onClick={openUsersModal}
+                className="px-3 py-1.5 rounded-lg text-[11px] font-semibold text-zinc-500 hover:text-white bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 transition-colors">
+                👥 Usuarios
+              </button>
+            )}
+
+            {(user.role === "boss" || user.role === "admin") && (
+              <button onClick={openArchivedView}
+                className="px-3 py-1.5 rounded-lg text-[11px] font-semibold text-zinc-500 hover:text-white bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 transition-colors">
+                🗂️ Archivados
+              </button>
+            )}
+            <a href="/app"
+              className="px-3 py-1.5 rounded-lg text-[11px] font-semibold text-zinc-500 hover:text-white bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 transition-colors">
+              🧯 Trabajadores
+            </a>
+            <div className="h-6 w-px bg-zinc-800 mx-1" />
+            <div className="flex items-center gap-2">
+              <div className="text-right">
+                <p className="text-[11px] font-semibold text-zinc-300 leading-none">{user.displayName}</p>
+                <p className="text-[9px] font-bold uppercase tracking-wider mt-0.5 leading-none" style={{
+                  color: user.role === "boss" ? "#f87171" : "#fbbf24"
+                }}>{user.role}</p>
+              </div>
+              <button onClick={onLogout}
+                className="w-8 h-8 rounded-lg bg-zinc-900 hover:bg-red-950 border border-zinc-800 hover:border-red-800 flex items-center justify-center text-zinc-500 hover:text-red-400 transition-colors text-xs"
+                title="Cerrar sesión">
+                ⏻
+              </button>
             </div>
           </div>
         </div>
@@ -689,12 +891,14 @@ export default function DashboardPage() {
                       >
                         📋 Duplicar
                       </button>
-                      <button
-                        onClick={() => { setDeleteConfirmText(""); setDeleteModal(true); }}
-                        className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-red-900 text-sm font-semibold text-zinc-300 hover:text-red-400 transition-colors border border-zinc-700 hover:border-red-700"
-                      >
-                        🗑️ Eliminar
-                      </button>
+                      {(user.role === "admin" || user.role === "boss") && (
+                        <button
+                          onClick={() => { setDeleteConfirmText(""); setDeleteModal(true); }}
+                          className="px-4 py-2 rounded-xl bg-zinc-800 hover:bg-red-900 text-sm font-semibold text-zinc-300 hover:text-red-400 transition-colors border border-zinc-700 hover:border-red-700"
+                        >
+                          🗑️ Archivar
+                        </button>
+                      )}
                       <button
                         onClick={exportExcel}
                         disabled={exporting}
@@ -1201,37 +1405,31 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* ══ MODAL: ELIMINAR EMPRESA ══ */}
+        {/* ══ MODAL: ARCHIVAR EMPRESA ══ */}
         {deleteModal && selectedEmpresa && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
             <div className="bg-zinc-900 border border-red-900/60 rounded-2xl w-full max-w-sm">
               <div className="px-6 py-4 border-b border-zinc-800">
-                <h3 className="text-lg font-bold text-red-400">⚠️ Eliminar Empresa</h3>
+                <h3 className="text-lg font-bold text-red-400">
+                  🗂️ Archivar Empresa
+                </h3>
                 <p className="text-xs text-zinc-500 mt-1">
-                  Esta acción es irreversible. Se eliminarán todos los extintores asociados.
+                  La empresa se archivará y podrá ser restaurada desde el panel de Archivados.
                 </p>
               </div>
               <div className="px-6 py-5 flex flex-col gap-3">
-                <p className="text-sm text-zinc-400">
-                  Escribe <span className="font-bold text-white">ELIMINAR</span> para confirmar:
-                </p>
-                <input
-                  className={modalInput}
-                  value={deleteConfirmText}
-                  onChange={(e) => setDeleteConfirmText(e.target.value)}
-                  placeholder="Escribe ELIMINAR"
-                />
+                <p className="text-sm text-zinc-400">¿Estás seguro de archivar esta empresa?</p>
               </div>
               <div className="px-6 py-4 border-t border-zinc-800 flex gap-3 justify-end">
-                <button onClick={() => { setDeleteModal(false); setDeleteConfirmText(""); }} className="px-4 py-2.5 rounded-xl border border-zinc-700 text-sm font-semibold text-zinc-400 hover:text-white transition-colors">
+                <button onClick={() => setDeleteModal(false)} className="px-4 py-2.5 rounded-xl border border-zinc-700 text-sm font-semibold text-zinc-400 hover:text-white transition-colors">
                   Cancelar
                 </button>
                 <button
                   onClick={handleDeleteEmpresa}
-                  disabled={saving || deleteConfirmText !== "ELIMINAR"}
+                  disabled={saving}
                   className="px-5 py-2.5 rounded-xl bg-red-700 hover:bg-red-600 text-sm font-bold text-white disabled:opacity-50 transition-colors"
                 >
-                  {saving ? "Eliminando..." : "Eliminar definitivamente"}
+                  {saving ? "Procesando..." : "Archivar"}
                 </button>
               </div>
             </div>
@@ -1365,10 +1563,9 @@ export default function DashboardPage() {
                 </ModalField>
                 <ModalField label="RUC">
                   <input
-                    className={`w-full bg-zinc-800 border rounded-xl px-3 py-2.5 text-sm text-zinc-200 focus:outline-none transition-colors ${
-                      empresaForm.ruc.length > 0 && empresaForm.ruc.length !== 11
-                        ? "border-red-500" : "border-zinc-700 focus:border-red-600"
-                    }`}
+                    className={`w-full bg-zinc-800 border rounded-xl px-3 py-2.5 text-sm text-zinc-200 focus:outline-none transition-colors ${empresaForm.ruc.length > 0 && empresaForm.ruc.length !== 11
+                      ? "border-red-500" : "border-zinc-700 focus:border-red-600"
+                      }`}
                     value={empresaForm.ruc}
                     onChange={(e) => {
                       const v = e.target.value.replace(/\D/g, "").slice(0, 11);
@@ -1413,6 +1610,277 @@ export default function DashboardPage() {
                 >
                   {saving ? "Guardando..." : "Crear Empresa"}
                 </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ══ MODAL: GESTIÓN DE USUARIOS ══ */}
+        {usersModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+              <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between">
+                <h3 className="text-lg font-bold text-white">👥 Gestión de Usuarios</h3>
+                <button onClick={() => setUsersModal(false)} className="text-zinc-500 hover:text-white text-xl">✕</button>
+              </div>
+
+              {/* Formulario crear/editar */}
+              <div className="px-6 py-4 border-b border-zinc-800/60 bg-zinc-900/80">
+                <p className="text-[10px] font-bold text-red-500 uppercase tracking-widest mb-3">
+                  {editingUserId ? "Editar Usuario" : "Nuevo Usuario"}
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Usuario</label>
+                    <input className={modalInput} value={userForm.username}
+                      onChange={(e) => setUserForm((p) => ({ ...p, username: e.target.value }))}
+                      placeholder="nombre de usuario" />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">
+                      {editingUserId ? "Nueva Contraseña (vacío = no cambiar)" : "Contraseña"}
+                    </label>
+                    <input type="password" className={modalInput} value={userForm.password}
+                      onChange={(e) => setUserForm((p) => ({ ...p, password: e.target.value }))}
+                      placeholder={editingUserId ? "Dejar vacío para no cambiar" : "Contraseña"} />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Nombre para mostrar</label>
+                    <input className={modalInput} value={userForm.displayName}
+                      onChange={(e) => setUserForm((p) => ({ ...p, displayName: e.target.value }))}
+                      placeholder="Nombre completo" />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">Rol</label>
+                    <select className={modalInput} value={userForm.role}
+                      onChange={(e) => setUserForm((p) => ({ ...p, role: e.target.value }))}>
+                      <option value="worker">Técnico — Aplicación móvil</option>
+                      <option value="admin">Administrador — App + Panel de Control</option>
+                    </select>
+                  </div>
+                </div>
+                {userError && (
+                  <p className="text-red-400 text-xs font-semibold bg-red-950/40 border border-red-900/60 rounded-xl px-3 py-2 mt-3">{userError}</p>
+                )}
+                <div className="flex gap-2 mt-3">
+                  {editingUserId && (
+                    <button onClick={() => { setEditingUserId(null); setUserForm({ username: "", password: "", displayName: "", role: "worker" }); }}
+                      className="px-3 py-2 rounded-xl border border-zinc-700 text-xs font-semibold text-zinc-400 hover:text-white transition-colors">
+                      Cancelar edición
+                    </button>
+                  )}
+                  <button onClick={saveUser} disabled={savingUser}
+                    className="px-4 py-2 rounded-xl bg-red-700 hover:bg-red-600 text-xs font-bold text-white disabled:opacity-50 transition-colors">
+                    {savingUser ? "Guardando..." : editingUserId ? "Actualizar" : "Crear Usuario"}
+                  </button>
+                </div>
+              </div>
+
+              {/* Lista de usuarios */}
+              <div className="px-6 py-4">
+                <div className="divide-y divide-zinc-800/40">
+                  {usersList.map((u) => (
+                    <div key={u.id} className="flex items-center gap-3 py-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-zinc-200">{u.displayName || u.username}</p>
+                        <p className="text-[11px] text-zinc-500">@{u.username} · <span className={`font-bold ${u.role === "boss" ? "text-red-400" : u.role === "admin" ? "text-amber-400" : "text-zinc-400"}`}>{u.role}</span></p>
+                      </div>
+                      {u.role !== "boss" && (
+                        <div className="flex gap-1">
+                          <button onClick={() => startEditUser(u)}
+                            className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-[11px] font-semibold text-zinc-400 hover:text-white border border-zinc-700 transition-colors">
+                            ✏️ Editar
+                          </button>
+                          <button onClick={() => deleteUser(u.id)}
+                            className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-red-900 text-[11px] font-semibold text-zinc-400 hover:text-red-400 border border-zinc-700 hover:border-red-700 transition-colors">
+                            🗑️
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ══ MODAL: ARCHIVADOS (BOSS) ══ */}
+        {archivedView && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+              {/* Header */}
+              <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between shrink-0">
+                <div>
+                  <h3 className="text-lg font-bold text-white">🗂️ Elementos Archivados</h3>
+                  <p className="text-xs text-zinc-500 mt-0.5">
+                    Restaurar o eliminar permanentemente
+                  </p>
+                </div>
+                <button onClick={() => setArchivedView(false)} className="text-zinc-500 hover:text-white text-xl">✕</button>
+              </div>
+
+              {/* Tabs */}
+              <div className="flex border-b border-zinc-800 shrink-0">
+                <button
+                  onClick={() => setArchivedTab("empresas")}
+                  className={`flex-1 py-3 text-xs font-bold transition-colors border-b-2 ${archivedTab === "empresas"
+                    ? "text-red-400 border-red-500"
+                    : "text-zinc-500 border-transparent hover:text-zinc-300"
+                    }`}
+                >
+                  🏢 Empresas ({archivedEmpresas.length})
+                </button>
+                <button
+                  onClick={() => setArchivedTab("extintores")}
+                  className={`flex-1 py-3 text-xs font-bold transition-colors border-b-2 ${archivedTab === "extintores"
+                    ? "text-red-400 border-red-500"
+                    : "text-zinc-500 border-transparent hover:text-zinc-300"
+                    }`}
+                >
+                  🧯 Extintores ({archivedExtintores.length})
+                </button>
+              </div>
+
+              {/* Contenido */}
+              <div className="flex-1 overflow-y-auto p-4">
+                {loadingArchived ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="w-6 h-6 border-2 border-zinc-700 border-t-red-500 rounded-full animate-spin" />
+                  </div>
+                ) : archivedTab === "empresas" ? (
+                  archivedEmpresas.length === 0 ? (
+                    <div className="text-center py-12 text-zinc-600">
+                      <p className="text-4xl mb-2">🏢</p>
+                      <p className="text-sm">No hay empresas archivadas</p>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-2">
+                      {archivedEmpresas.map((emp: any) => (
+                        <div key={emp.id} className="flex items-center gap-3 px-4 py-3 bg-zinc-800/50 border border-zinc-800 rounded-xl">
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-semibold text-zinc-200 truncate">{emp.razonSocial}</p>
+                            <p className="text-[10px] text-zinc-500">
+                              RUC: {emp.ruc || "—"} · {emp.distrito || "—"} · Archivado: {new Date(emp.deletedAt).toLocaleDateString("es-PE")}
+                            </p>
+                          </div>
+                          <div className="flex gap-1.5 shrink-0">
+                            <button onClick={() => restoreEmpresa(emp.id)}
+                              className="px-3 py-1.5 rounded-lg bg-emerald-900/40 hover:bg-emerald-800/60 text-[11px] font-bold text-emerald-400 border border-emerald-800 transition-colors">
+                              ♻️ Restaurar
+                            </button>
+                            {user.role === "boss" && (
+                              <button onClick={() => hardDeleteEmpresa(emp.id)}
+                                className="px-3 py-1.5 rounded-lg bg-red-900/30 hover:bg-red-800/50 text-[11px] font-bold text-red-400 border border-red-800 transition-colors">
+                                🗑️ Eliminar
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )
+                ) : (
+                  archivedExtintores.length === 0 ? (
+                    <div className="text-center py-12 text-zinc-600">
+                      <p className="text-4xl mb-2">🧯</p>
+                      <p className="text-sm">No hay extintores archivados</p>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-3">
+                      {Object.entries(
+                        archivedExtintores.reduce((acc: any, ext: any) => {
+                          const empId = ext.empresaId;
+                          if (!acc[empId]) {
+                            acc[empId] = { empresa: ext.empresa || { razonSocial: empId }, extintores: [] };
+                          }
+                          acc[empId].extintores.push(ext);
+                          return acc;
+                        }, {})
+                      ).map(([empId, group]: [string, any]) => {
+                        const isExpanded = expandedArchived[empId];
+                        return (
+                          <div key={empId} className="bg-zinc-800/40 border border-zinc-800 rounded-xl overflow-hidden">
+                            {/* Cabecera del Acordeón */}
+                            <button
+                              onClick={() => setExpandedArchived((p) => ({ ...p, [empId]: !p[empId] }))}
+                              className="w-full flex items-center justify-between px-4 py-3 bg-zinc-800/80 hover:bg-zinc-700/60 transition-colors text-left"
+                            >
+                              <div>
+                                <p className="text-sm font-bold text-zinc-200">
+                                  {group.empresa.razonSocial}{" "}
+                                  <span className="text-zinc-500 font-normal ml-1">— {group.empresa.ruc || "Sin RUC"}</span>
+                                </p>
+                                <p className="text-[10px] text-zinc-400 mt-0.5">
+                                  Retiro: {group.empresa.fechaRetiro ? group.empresa.fechaRetiro.split("-").reverse().join("/") : "—"} |{" "}
+                                  Entrega: {group.empresa.fechaEntrega ? group.empresa.fechaEntrega.split("-").reverse().join("/") : "—"}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                <span className="text-xs font-semibold text-zinc-500 bg-zinc-900/80 border border-zinc-700 px-2.5 py-1 rounded-md">
+                                  {group.extintores.length} extintores
+                                </span>
+                                <span className="text-zinc-500 text-sm">{isExpanded ? "▲" : "▼"}</span>
+                              </div>
+                            </button>
+
+                            {/* Contenido Desplegable (Tabla) */}
+                            {isExpanded && (
+                              <div className="overflow-x-auto border-t border-zinc-800">
+                                <table className="w-full text-sm">
+                                  <thead>
+                                    <tr className="text-left text-[11px] uppercase tracking-wider text-zinc-500 bg-zinc-900/60">
+                                      <th className="px-4 py-2 font-semibold">N° Serie</th>
+                                      <th className="px-4 py-2 font-semibold">Marca</th>
+                                      <th className="px-4 py-2 font-semibold">Agente</th>
+                                      <th className="px-4 py-2 font-semibold">Estado</th>
+                                      <th className="px-4 py-2 font-semibold">Archivado</th>
+                                      <th className="px-4 py-2 font-semibold">Acciones</th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-zinc-800/40">
+                                    {group.extintores.map((ext: any) => (
+                                      <tr key={ext.rowIndex} className="hover:bg-zinc-800/30">
+                                        <td className="px-4 py-2.5 font-medium text-zinc-200">{ext.nSerie || "—"}</td>
+                                        <td className="px-4 py-2.5 text-zinc-400">{ext.marca || "—"}</td>
+                                        <td className="px-4 py-2.5 text-zinc-400">{ext.agenteExtintor || "—"}</td>
+                                        <td className="px-4 py-2.5 text-zinc-400">{ext.estadoExtintor || "—"}</td>
+                                        <td className="px-4 py-2.5 text-zinc-500 text-xs">
+                                          {new Date(ext.deletedAt).toLocaleDateString("es-PE")}
+                                        </td>
+                                        <td className="px-4 py-2.5">
+                                          <div className="flex gap-2">
+                                            <button
+                                              onClick={() => restoreExtintor(ext.rowIndex, ext.empresaId)}
+                                              title="Restaurar"
+                                              className="px-3 py-1.5 rounded-lg bg-emerald-900/40 hover:bg-emerald-800/60 text-[11px] font-bold text-emerald-400 border border-emerald-800 transition-colors"
+                                            >
+                                              ♻️ Restaurar
+                                            </button>
+
+                                            {user.role === "boss" && (
+                                              <button
+                                                onClick={() => hardDeleteExtintor(ext.rowIndex)}
+                                                title="Eliminar permanentemente"
+                                                className="px-3 py-1.5 rounded-lg bg-red-900/30 hover:bg-red-800/50 text-[11px] font-bold text-red-400 border border-red-800 transition-colors"
+                                              >
+                                                🗑️ Eliminar
+                                              </button>
+                                            )}
+                                          </div>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )
+                )}
               </div>
             </div>
           </div>

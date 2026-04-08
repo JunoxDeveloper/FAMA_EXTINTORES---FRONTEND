@@ -172,8 +172,8 @@ function SiNo({
       type="button"
       onClick={() => onChange(checked ? "" : "SI")}
       className={`w-10 h-10 rounded-xl border-2 flex items-center justify-center text-lg font-bold transition-all active:scale-90 ${checked
-          ? "bg-emerald-600 border-emerald-600 text-white"
-          : "bg-zinc-100 border-zinc-300 text-zinc-300"
+        ? "bg-emerald-600 border-emerald-600 text-white"
+        : "bg-zinc-100 border-zinc-300 text-zinc-300"
         }`}
     >
       {checked ? "✓" : ""}
@@ -181,7 +181,7 @@ function SiNo({
   );
 }
 
-export default function App() {
+export default function App({ user, onLogout }: { user: { id: string; username: string; role: string; displayName: string }; onLogout: () => void }) {
   const [socket, setSocket] = useState<Socket | null>(null);
   const [connected, setConnected] = useState(false);
   const [view, setView] = useState<View>("home");
@@ -219,8 +219,17 @@ export default function App() {
     s.on("connect", () => {
       setConnected(true);
       s.emit("empresa:list");
+
+      // Validar si el usuario sigue existiendo al refrescar la página
+      s.emit("auth:verify", { id: user.id }, (res: any) => {
+        if (res && res.valid === false) onLogout();
+      });
     });
-    s.on("disconnect", () => setConnected(false));
+
+    // Escuchar evento de expulsión en tiempo real
+    s.on("auth:force_logout", (data: { userId: string }) => {
+      if (data.userId === user.id) onLogout();
+    });
 
     // Lista de empresas actualizada
     s.on("empresa:list", (list: EmpresaItem[]) => {
@@ -318,6 +327,7 @@ export default function App() {
     const payload = {
       ...form,
       id: activeId,
+      nSerie: form.nSerie.trim() === "" ? "S/N" : form.nSerie.trim(),
       ma: form.ma ? "SI" : "",
       ph: form.ph ? "SI" : "",
     };
@@ -374,9 +384,10 @@ export default function App() {
 
   const handleDelete = (rowIndex: number) => {
     if (!socket || !confirm("¿Eliminar este extintor?")) return;
+    // Se agrega el campo 'role' al payload
     socket.emit(
       "extintor:delete",
-      { id: activeId, rowIndex },
+      { id: activeId, rowIndex, role: user.role },
       (res: any) => {
         if (res?.success) showToast("Eliminado");
         else showToast("Error al eliminar", "err");
@@ -397,34 +408,53 @@ export default function App() {
     <div className="app-workers flex flex-col h-dvh max-w-120 mx-auto bg-white shadow-2xl">
       {/* HEADER */}
       <header
-        className="flex items-center justify-between px-4 bg-red-800 shrink-0"
+        className="relative flex items-center justify-between px-4 bg-red-800 shrink-0"
         style={{ height: 60 }}
       >
-        <div className="flex items-center gap-3">
+        {/* IZQUIERDA: Botón Back + En Línea */}
+        <div className="flex items-center justify-start gap-2 z-10 w-1/3">
           {view !== "home" && (
             <button
               onClick={() => setView(view === "form" ? "lista" : "home")}
-              className="text-white/70 text-2xl leading-none pr-1 active:text-white"
+              className="text-white/70 text-3xl leading-none active:text-white pb-1 mr-1"
             >
               ‹
             </button>
           )}
-          <div>
-            <div className="text-white font-black text-2xl tracking-[3px] leading-none">
-              FAMA
-            </div>
-            <div className="text-red-200 text-[9px] font-semibold tracking-[4px] uppercase">
-              Extintores
-            </div>
+          <span className={`w-2 h-2 rounded-full shrink-0 ${connected ? "bg-emerald-400 dot-pulse" : "bg-zinc-400"}`} />
+          <span className="text-[11px] text-white/80 font-medium hidden sm:inline-block">
+            {connected ? "En línea" : "Desconectado"} 
+          </span>
+        </div>
+
+        {/* CENTRO: Logo (Posicionamiento absoluto para centrado matemático perfecto) */}
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none z-0">
+          <div className="text-white font-black text-2xl tracking-[3px] leading-none">
+            FAMA
+          </div>
+          <div className="text-red-200 text-[9px] font-semibold tracking-[4px] uppercase mt-0.5">
+            Extintores
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <span
-            className={`w-2 h-2 rounded-full shrink-0 ${connected ? "bg-emerald-400 dot-pulse" : "bg-zinc-400"}`}
-          />
-          <span className="text-[11px] text-white/80 font-medium">
-            {connected ? "En línea" : "Sin conexión"}
-          </span>
+
+        {/* DERECHA: Usuario + Dashboard + Logout */}
+        <div className="flex items-center justify-end gap-2 z-10 w-1/3">
+          <div className="flex flex-col items-end text-right">
+            <span className="text-[10px] text-white/80 font-medium leading-none truncate max-w-20">
+              {user.displayName.split(" ")[0]} {/* Muestra solo el primer nombre para ahorrar espacio */}
+            </span>
+            {(user.role === "admin" || user.role === "boss") && (
+              <a href="/dashboard"
+                className="text-[8px] text-red-300 font-semibold bg-red-900/50 px-1.5 py-0.5 rounded-full mt-1">
+                Dashboard
+              </a>
+            )}
+          </div>
+          <div className="w-px h-5 bg-white/20 mx-0.5" />
+          <button onClick={onLogout}
+            className="text-sm text-white/60 hover:text-white text-[10px] font-medium active:scale-90 transition-transform p-1">
+            Cerrar Sesión
+          </button>
         </div>
       </header>
 
