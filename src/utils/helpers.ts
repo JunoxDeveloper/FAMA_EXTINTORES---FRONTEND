@@ -4,7 +4,7 @@ export const emptyForm = (): FormData => ({
     nSerie: "", nInterno: "", marca: "", fechaFabricacion: "", realizadoPH: "",
     vencimPH: "", estadoExtintor: "", agenteExtintor: "", peso: "", unidadPeso: "KG",
     ma: false, recarga: "", ph: false, valvula: "", manguera: "", manometro: "",
-    tobera: "", observaciones: "",
+    tobera: "", observaciones: "", servicioExtra: "", motivoBaja: "",
 });
 
 export const emptyEmpresa = (): EmpresaData => ({
@@ -16,7 +16,7 @@ export const emptyExtintor = (): Partial<Extintor> => ({
     nSerie: "", nInterno: "", marca: "", fechaFabricacion: "",
     realizadoPH: "", vencimPH: "", estadoExtintor: "", agenteExtintor: "",
     peso: "", unidadPeso: "KG", ma: "", recarga: "", ph: "",
-    valvula: "", manguera: "", manometro: "", tobera: "", observaciones: "",
+    valvula: "", manguera: "", manometro: "", tobera: "", observaciones: "", servicioExtra: "", motivoBaja: ""
 });
 
 export const estadoColor: Record<string, string> = {

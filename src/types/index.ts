@@ -46,6 +46,8 @@ export type Extintor = {
   manometro: string;
   tobera: string;
   observaciones: string;
+  servicioExtra: string;
+  motivoBaja: string;
 };
 
 export type FormData = {
@@ -58,7 +60,7 @@ export type FormData = {
   estadoExtintor: string;
   agenteExtintor: string;
   peso: string;
-  unidadPeso: "KG" | "LB";
+  unidadPeso: "KG" | "LB" | "LT";
   ma: boolean;
   recarga: string;
   ph: boolean;
@@ -67,6 +69,8 @@ export type FormData = {
   manometro: string;
   tobera: string;
   observaciones: string;
+  servicioExtra: string;
+  motivoBaja: string;
 };
 
 // Tipos específicos para las vistas

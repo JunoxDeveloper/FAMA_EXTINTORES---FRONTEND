@@ -68,7 +68,7 @@ export default function WeightSortModal({
           {/* Secuencia actual */}
           <div>
             <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2 block">Orden de Prioridad (Primero a Último)</label>
-            <div className="flex flex-col gap-2 bg-zinc-950/50 p-3 rounded-xl border border-zinc-800/50 min-h-[120px]">
+            <div className="flex flex-col gap-2 bg-zinc-950/50 p-3 rounded-xl border border-zinc-800/50 min-h-30">
               {order.length === 0 ? (
                 <div className="text-center py-6 text-sm text-zinc-600">No hay orden personalizado. Se mostrarán por defecto.</div>
               ) : (

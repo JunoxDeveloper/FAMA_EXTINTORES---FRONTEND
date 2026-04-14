@@ -1,12 +1,20 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { MARCAS, AGENTES, ESTADOS, RECARGAS, PESOS_KG, PESOS_LB, COMP_KEYS, COMP_LABELS, DISTRITOS_LIMA } from "./constants";
+import { ESTADOS, PESOS_KG, PESOS_LB, PESOS_LT, COMP_KEYS, COMP_LABELS, DISTRITOS_LIMA } from "./constants";
 import type { EmpresaItem, EmpresaData, Extintor, FormData, WorkerView as View } from "./types";
 import { emptyForm, emptyEmpresa } from "./utils/helpers";
 import { useSocket } from "./hooks/useSocket";
 import { Card, Field, Toggle, SiNo, inputCls } from "./components/ui/WorkerUI";
+import { CreatableSelect } from "./components/ui/CreatableSelect";
+import { MultiSelect } from "./components/ui/MultiSelect";
 
 export default function App({ user, onLogout }: { user: { id: string; username: string; role: string; displayName: string }; onLogout: () => void }) {
-  const { socket, connected } = useSocket(user.id, onLogout);
+  const { socket, connected, catalogs } = useSocket(user.id, onLogout);
+  const MARCAS = catalogs.marcas.map((c) => c.value).sort((a, b) => a.localeCompare(b, "es"));
+  const AGENTES = catalogs.agentes.map((c) => c.value).sort((a, b) => a.localeCompare(b, "es"));
+  const RECARGAS = catalogs.recargas.map((c) => c.value);
+  const MOTIVOS_BAJA = catalogs.motivosBaja.map((c) => c.value);
+  const SERVICIOS_EXTRA = catalogs.serviciosExtra.map((c) => c.value);
+
   const [view, setView] = useState<View>("home");
 
   const [empresas, setEmpresas] = useState<EmpresaItem[]>([]);
@@ -111,7 +119,7 @@ export default function App({ user, onLogout }: { user: { id: string; username: 
     const payload = {
       ...form, id: activeId,
       nSerie: form.nSerie.trim() === "" ? "S/N" : form.nSerie.trim(),
-      ma: form.ma ? "SI" : "", ph: form.ph ? "SI" : "",
+      ma: form.ma ? "SI" : "", ph: form.ph ? "SI" : "", servicioExtra: form.servicioExtra, motivoBaja: form.motivoBaja,
     };
     if (editingRow !== null) {
       socket.emit("extintor:update", { ...payload, rowIndex: editingRow }, (res: any) => {
@@ -142,10 +150,11 @@ export default function App({ user, onLogout }: { user: { id: string; username: 
       fechaFabricacion: ext.fechaFabricacion, realizadoPH: ext.realizadoPH,
       vencimPH: ext.vencimPH, estadoExtintor: ext.estadoExtintor,
       agenteExtintor: ext.agenteExtintor, peso: ext.peso,
-      unidadPeso: (ext.unidadPeso as "KG" | "LB") || "KG",
+      unidadPeso: (ext.unidadPeso as "KG" | "LB" | "LT") || "KG",
       ma: ext.ma === "SI", recarga: ext.recarga, ph: ext.ph === "SI",
       valvula: ext.valvula, manguera: ext.manguera, manometro: ext.manometro,
-      tobera: ext.tobera, observaciones: ext.observaciones,
+      tobera: ext.tobera, observaciones: ext.observaciones, servicioExtra: ext.servicioExtra || "",
+      motivoBaja: ext.motivoBaja || "",
     });
     setEditingRow(ext.rowIndex);
     setView("form");
@@ -169,8 +178,8 @@ export default function App({ user, onLogout }: { user: { id: string; username: 
       <header className="relative flex items-center justify-between px-5 md:px-8 bg-linear-to-r from-red-800 to-red-700 shrink-0 h-16 md:h-20 shadow-md z-20">
         <div className="flex items-center justify-start gap-4 z-10 w-1/3">
           {view !== "home" && (
-            <button 
-              onClick={() => setView(view === "form" ? "lista" : "home")} 
+            <button
+              onClick={() => setView(view === "form" ? "lista" : "home")}
               className="w-10 h-10 flex items-center justify-center rounded-full bg-red-900/40 hover:bg-red-900/60 text-white transition-all active:scale-95"
             >
               <span className="text-2xl leading-none -mt-1">‹</span>
@@ -264,7 +273,7 @@ export default function App({ user, onLogout }: { user: { id: string; username: 
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 gap-4 md:gap-6">
               {empresas.map((emp) => (
                 <button
                   key={emp.id}
@@ -300,7 +309,7 @@ export default function App({ user, onLogout }: { user: { id: string; username: 
         {view === "empresa" && (
           <div className="scroll-area h-full overflow-y-auto p-4 md:p-8 flex flex-col gap-6 max-w-4xl mx-auto w-full">
             <Card title="🏢 Datos de la Empresa">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+              <div className="grid grid-cols-2 md:grid-cols-2 gap-4 md:gap-6">
                 <Field label="Razón Social" className="md:col-span-2">
                   <input className={inputCls} value={empresa.razonSocial} onChange={(e) => setEmpresa((p) => ({ ...p, razonSocial: e.target.value }))} placeholder="Nombre oficial de la empresa" />
                 </Field>
@@ -325,7 +334,7 @@ export default function App({ user, onLogout }: { user: { id: string; username: 
             </Card>
 
             <Card title="👤 Datos del Solicitante">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+              <div className="grid grid-cols-2 md:grid-cols-2 gap-4 md:gap-6">
                 <Field label="Nombres y Apellidos" className="md:col-span-2">
                   <input className={inputCls} value={empresa.nombresApellidos} onChange={(e) => setEmpresa((p) => ({ ...p, nombresApellidos: e.target.value }))} placeholder="Nombre completo del contacto" />
                 </Field>
@@ -339,7 +348,7 @@ export default function App({ user, onLogout }: { user: { id: string; username: 
             </Card>
 
             <Card title="📅 Fechas de Servicio">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+              <div className="grid grid-cols-2 md:grid-cols-2 gap-4 md:gap-6">
                 <Field label="Fecha de Retiro">
                   <input className={inputCls} type="date" value={empresa.fechaRetiro} onChange={(e) => setEmpresa((p) => ({ ...p, fechaRetiro: e.target.value }))} />
                 </Field>
@@ -387,10 +396,10 @@ export default function App({ user, onLogout }: { user: { id: string; username: 
                   </button>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 mt-2">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-4 md:gap-6 mt-2">
                   {extintores.map((ext, index) => (
                     <div key={ext.rowIndex} className="bg-white border border-zinc-200/80 rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all flex flex-col hover:-translate-y-1">
-                      
+
                       {/* Header de Tarjeta */}
                       <div className="flex items-center justify-between px-5 py-4 bg-zinc-50/80 border-b border-zinc-100">
                         <div className="flex items-center gap-3 min-w-0">
@@ -410,7 +419,7 @@ export default function App({ user, onLogout }: { user: { id: string; username: 
                           </button>
                         </div>
                       </div>
-                      
+
                       {/* Cuerpo de Tarjeta */}
                       <div className="px-5 py-5 flex flex-col gap-3 flex-1">
                         <div className="grid grid-cols-2 gap-x-4 gap-y-3">
@@ -462,9 +471,11 @@ export default function App({ user, onLogout }: { user: { id: string; username: 
 
         {/* ════ VISTA: FORMULARIO DE EXTINTOR ════ */}
         {view === "form" && (
-          <div className="scroll-area h-full overflow-y-auto p-4 md:p-8 flex flex-col gap-6 max-w-4xl mx-auto w-full">
+          <div className="scroll-area h-full overflow-y-auto p-4 md:p-8 flex flex-col gap-6 max-w-5xl mx-auto w-full">
+
+            {/* 1. DATOS PRINCIPALES (50/50 Grid) */}
             <Card title={`🧯 ${editingRow !== null ? "Editar Extintor" : "Nuevo Extintor"}`}>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+              <div className="grid grid-cols-2 md:grid-cols-2 gap-4 md:gap-6">
                 <Field label="N° Serie">
                   <input className={inputCls} value={form.nSerie} onChange={setF("nSerie")} placeholder="Ej: ABC-12345" />
                 </Field>
@@ -472,10 +483,16 @@ export default function App({ user, onLogout }: { user: { id: string; username: 
                   <input className={inputCls} value={form.nInterno} onChange={setF("nInterno")} placeholder="Identificador interno" />
                 </Field>
                 <Field label="Marca">
-                  <select className={inputCls} value={form.marca} onChange={setF("marca")}>
-                    <option value="">Seleccionar marca...</option>
-                    {MARCAS.map((m) => <option key={m}>{m}</option>)}
-                  </select>
+                  <CreatableSelect
+                    value={form.marca}
+                    onChange={(v) => setForm((p) => ({ ...p, marca: v }))}
+                    options={MARCAS}
+                    placeholder="Seleccionar marca..."
+                    catalogType="marca"
+                    socket={socket}
+                    userRole={user.role}
+                    className={inputCls}
+                  />
                 </Field>
                 <Field label="Año de Fabricación">
                   <input className={inputCls} value={form.fechaFabricacion} onChange={setF("fechaFabricacion")} placeholder="Ej: 2020" inputMode="numeric" maxLength={4} />
@@ -483,7 +500,8 @@ export default function App({ user, onLogout }: { user: { id: string; username: 
               </div>
             </Card>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* 2. PRUEBA HIDROSTÁTICA & CARACTERÍSTICAS (50/50 Grid con Motivo de Baja dinámico) */}
+            <div className="grid grid-cols-2 md:grid-cols-2 gap-6 items-start">
               <Card title="🔬 Prueba Hidrostática">
                 <div className="flex flex-col gap-5">
                   <Field label="Año Realizado PH">
@@ -495,69 +513,119 @@ export default function App({ user, onLogout }: { user: { id: string; username: 
                 </div>
               </Card>
 
-              <Card title="⚗️ Características del Extintor">
-                <div className="flex flex-col gap-5">
-                  <div className="grid grid-cols-2 gap-4">
-                    <Field label="Estado">
-                      <select className={inputCls} value={form.estadoExtintor} onChange={setF("estadoExtintor")}>
-                        <option value="">Sel...</option>
-                        {ESTADOS.map((o) => <option key={o}>{o}</option>)}
-                      </select>
-                    </Field>
-                    <Field label="Agente">
-                      <select className={inputCls} value={form.agenteExtintor} onChange={setF("agenteExtintor")}>
-                        <option value="">Sel...</option>
-                        {AGENTES.map((o) => <option key={o}>{o}</option>)}
-                      </select>
+              {/* Columna derecha: Características + Motivo de Baja (si aplica) */}
+              <div className="flex flex-col gap-6">
+                <Card title="⚗️ Características del Extintor">
+                  <div className="flex flex-col gap-5">
+                    <div className="flex flex-col gap-4"> {/* CAMBIO: flex-col en lugar de grid-cols-2 */}
+                      <Field label="Estado">
+                        <select className={inputCls} value={form.estadoExtintor} onChange={setF("estadoExtintor")}>
+                          <option value="">Seleccionar...</option>
+                          {ESTADOS.map((o) => <option key={o}>{o}</option>)}
+                        </select>
+                      </Field>
+                      <Field label="Agente">
+                        <CreatableSelect
+                          value={form.agenteExtintor}
+                          onChange={(v) => setForm((p) => ({ ...p, agenteExtintor: v }))}
+                          options={AGENTES}
+                          placeholder="Seleccionar..."
+                          catalogType="agente"
+                          socket={socket}
+                          userRole={user.role}
+                          className={inputCls}
+                        />
+                      </Field>
+                    </div>
+                    <Field label="Peso y Unidad">
+                      <div className="flex flex-col xl:flex-row gap-3">
+                        <div className="flex w-full rounded-xl overflow-hidden border-2 border-zinc-200 shrink-0 bg-zinc-50 shadow-sm p-1 gap-1"> {/* CAMBIO: Se agregó w-full */}
+                          {(["KG", "LB", "LT"] as const).map((u) => (
+                            // CAMBIO: Se reemplazó px-4 por flex-1 para que se estiren equitativamente
+                            <button key={u} type="button" onClick={() => setForm((p) => ({ ...p, unidadPeso: u, peso: "" }))} className={`flex-1 py-1.5 rounded-lg text-sm font-black transition-all text-center ${form.unidadPeso === u ? "bg-red-600 text-white shadow-md" : "text-zinc-400 hover:text-zinc-800 hover:bg-zinc-200/50"}`}>
+                              {u}
+                            </button>
+                          ))}
+                        </div>
+                        <select className={`${inputCls} flex-1`} value={form.peso} onChange={setF("peso")}>
+                          <option value="">Seleccionar peso...</option>
+                          {(form.unidadPeso === "LB" ? PESOS_LB : form.unidadPeso === "LT" ? PESOS_LT : PESOS_KG).map((p) => (
+                            <option key={p} value={p}>{p} {form.unidadPeso}</option>
+                          ))}
+                        </select>
+                      </div>
                     </Field>
                   </div>
-                  <Field label="Peso y Unidad">
-                    <div className="flex gap-3">
-                      <div className="flex rounded-xl overflow-hidden border-2 border-zinc-200 shrink-0 bg-zinc-50 shadow-sm p-1 gap-1">
-                        {(["KG", "LB"] as const).map((u) => (
-                          <button key={u} type="button" onClick={() => setForm((p) => ({ ...p, unidadPeso: u, peso: "" }))} className={`px-4 py-1.5 rounded-lg text-sm font-black transition-all ${form.unidadPeso === u ? "bg-red-600 text-white shadow-md" : "text-zinc-400 hover:text-zinc-800 hover:bg-zinc-200/50"}`}>
-                            {u}
-                          </button>
-                        ))}
-                      </div>
-                      <select className={`${inputCls} flex-1`} value={form.peso} onChange={setF("peso")}>
-                        <option value="">Seleccionar peso...</option>
-                        {(form.unidadPeso === "LB" ? PESOS_LB : PESOS_KG).map((p) => (
-                          <option key={p} value={p}>{p} {form.unidadPeso}</option>
-                        ))}
-                      </select>
+                </Card>
+              </div>
+
+              {form.estadoExtintor === "De Baja" && (
+                <div className="col-span-2 animate-in fade-in slide-in-from-top-4 duration-300">
+                  <Card title="⚠️ Motivo de Baja">
+                    <MultiSelect
+                      // CAMBIO: split(",") más un trim() asegura que funcione aunque falten espacios
+                      selected={form.motivoBaja.split(",").map(v => v.trim()).filter(Boolean)}
+                      onChange={(vals) => {
+                        // CAMBIO: Se aplica trim() antes de guardar para mantener limpieza de datos
+                        const motivo = vals.map((v) => v.toUpperCase().trim()).join(", ");
+                        setForm((p) => ({ ...p, motivoBaja: motivo }));
+                      }}
+                      options={MOTIVOS_BAJA}
+                      label="Seleccionar Motivos"
+                      catalogType="motivo_baja"
+                      socket={socket}
+                      userRole={user.role}
+                      className={inputCls}
+                    />
+                  </Card>
+                </div>
+              )}
+            </div>
+
+            {/* 3. SERVICIOS (50/50 Grid estirado para igualar alturas) */}
+            <div className="grid grid-cols-2 md:grid-cols-2 gap-6 items-stretch">
+              <Card title="🔧 Servicio Realizado">
+                <div className="flex flex-col gap-4 h-full">
+                  <Toggle checked={form.ma} label="MA — Mantenimiento" onChange={() => setForm((p) => ({ ...p, ma: !p.ma }))} />
+                  <Toggle checked={form.ph} label="PH — Prueba Hidrostática" onChange={() => setForm((p) => ({ ...p, ph: !p.ph }))} />
+
+                  <Field label="Recarga (Seleccione una opción)" className="mt-auto pt-2">
+                    <div className="flex flex-col gap-2">
+                      {RECARGAS.map((r) => (
+                        <button key={r} type="button" onClick={() => setForm((p) => ({ ...p, recarga: p.recarga === r ? "" : r }))} className={`flex items-center gap-2 px-4 py-3 rounded-xl border-2 text-sm font-bold transition-all ${form.recarga === r ? "bg-amber-500 border-amber-400 text-white shadow-md" : "bg-white border-zinc-200 text-zinc-500 hover:border-amber-300"}`}>
+                          RE — {r}
+                        </button>
+                      ))}
                     </div>
                   </Field>
                 </div>
               </Card>
+
+              <Card title="✨ Servicio Extra">
+                <div className="flex flex-col h-full">
+                  <MultiSelect
+                    selected={form.servicioExtra.split(",").map(v => v.trim()).filter(Boolean)}
+                    onChange={(vals) => {
+                      const extra = vals.map((v) => v.toUpperCase().trim()).join(", ");
+                      setForm((p) => ({ ...p, servicioExtra: extra }));
+                    }}
+                    options={SERVICIOS_EXTRA}
+                    label="Servicios adicionales"
+                    catalogType="servicio_extra"
+                    socket={socket}
+                    userRole={user.role}
+                    className={inputCls}
+                  />
+                </div>
+              </Card>
             </div>
 
-            <Card title="🔧 Servicio Realizado">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
-                <div className="flex flex-col gap-4">
-                  <Toggle checked={form.ma} label="MA — Mantenimiento" onChange={() => setForm((p) => ({ ...p, ma: !p.ma }))} />
-                  <Toggle checked={form.ph} label="PH — Prueba Hidrostática" onChange={() => setForm((p) => ({ ...p, ph: !p.ph }))} />
-                </div>
-                <Field label="Recarga (Seleccione una opción)">
-                  <div className="grid grid-cols-2 gap-3">
-                    {RECARGAS.map((r) => (
-                      <button
-                        key={r} type="button" onClick={() => setForm((p) => ({ ...p, recarga: p.recarga === r ? "" : r }))}
-                        className={`flex items-center justify-center gap-2 px-3 py-3.5 rounded-xl border-2 text-sm font-bold transition-all active:scale-95 ${form.recarga === r ? "bg-amber-500 border-amber-500 text-white shadow-[0_4px_15px_rgba(245,158,11,0.3)] hover:-translate-y-0.5" : "bg-white border-zinc-200 text-zinc-600 hover:bg-zinc-50 hover:border-zinc-300"}`}
-                      >
-                        RE — {r}
-                      </button>
-                    ))}
-                  </div>
-                </Field>
-              </div>
-            </Card>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-stretch">
+            {/* 4. COMPONENTES Y OBSERVACIONES (50/50 Grid estirado) */}
+            <div className="grid grid-cols-2 md:grid-cols-2 gap-6 items-stretch">
               <Card title="🔩 Componentes Instalados">
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-1 lg:grid-cols-2 gap-x-6 lg:gap-x-10 gap-y-3 w-full">
                   {COMP_KEYS.map((k) => (
-                    <div key={k} className="flex items-center w-full min-w-0 gap-3 py-2 border-b border-zinc-100 sm:border-0">
+                    <div key={k} className="flex items-center w-full min-w-0 gap-3 py-2 border-b border-zinc-100 sm:border-0 md:border-b lg:border-0">
                       <span className="text-sm font-bold text-zinc-700 flex-1 truncate">
                         {COMP_LABELS[k]}
                       </span>
@@ -567,17 +635,36 @@ export default function App({ user, onLogout }: { user: { id: string; username: 
                 </div>
               </Card>
 
-              <Card title="📝 Observaciones y Notas">
-                <textarea
-                  className={`${inputCls} resize-none h-full min-h-35`}
-                  value={form.observaciones}
-                  onChange={setF("observaciones")}
-                  placeholder="Escribe aquí cualquier detalle, anomalía o nota importante sobre el estado del extintor..."
-                />
+              <Card title="📝 Observaciones">
+                <div className="flex flex-col gap-3 h-full">
+
+                  {/* NUEVO: Contenedor de Badges dinámicos */}
+                  {(form.motivoBaja || form.servicioExtra) && (
+                    <div className="flex flex-col gap-1.5 p-3 bg-zinc-50 border-2 border-dashed border-zinc-200 rounded-xl">
+                      <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Se adjuntará al reporte final:</span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {form.motivoBaja.split(", ").filter(Boolean).map(m => (
+                          <span key={m} className="bg-red-100 text-red-700 text-xs font-bold px-2 py-1 rounded-md">⚠️ {m}</span>
+                        ))}
+                        {form.servicioExtra.split(", ").filter(Boolean).map(s => (
+                          <span key={s} className="bg-amber-100 text-amber-700 text-xs font-bold px-2 py-1 rounded-md">✨ {s}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Textarea exclusivo para notas manuales */}
+                  <textarea
+                    className={`${inputCls} resize-none flex-1 w-full min-h-30`}
+                    value={form.observaciones}
+                    onChange={setF("observaciones")}
+                    placeholder="Escribe aquí notas adicionales o detalles específicos..."
+                  />
+                </div>
               </Card>
             </div>
 
-            {/* BOTONES DE ACCIÓN */}
+            {/* 5. BOTONES DE ACCIÓN */}
             <div className="flex flex-col sm:flex-row gap-4 pt-4 pb-8 border-t border-zinc-200 mt-2">
               <button onClick={() => { setView("lista"); setEditingRow(null); }} className="order-2 sm:order-1 flex-1 py-4 md:py-5 rounded-2xl border-2 border-zinc-300 text-zinc-600 font-black text-sm md:text-base hover:bg-zinc-100 hover:border-zinc-400 transition-colors active:scale-95">
                 Cancelar

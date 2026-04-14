@@ -1,6 +1,9 @@
 import type { Extintor } from "../../types";
-import { MARCAS, AGENTES, ESTADOS, RECARGAS, PESOS_KG, PESOS_LB, COMP_KEYS, COMP_LABELS } from "../../constants";
+import { ESTADOS, PESOS_KG, PESOS_LB, PESOS_LT, COMP_KEYS, COMP_LABELS } from "../../constants";
 import { ModalSection, ModalField, modalInput } from "../ui/ModalUI";
+import { CreatableSelect } from "../ui/CreatableSelect";
+import { MultiSelect } from "../ui/MultiSelect";
+import type { Socket } from "socket.io-client";
 
 type Props = {
     form: Partial<Extintor>;
@@ -9,9 +12,16 @@ type Props = {
     onClose: () => void;
     onSave: () => void;
     saving: boolean;
+    marcas: string[];
+    agentes: string[];
+    recargas: string[];
+    motivosBaja: string[];
+    serviciosExtra: string[];
+    socket: Socket | null;
+    userRole: string;
 };
 
-export default function ExtintorModal({ form, setForm, isEditing, onClose, onSave, saving }: Props) {
+export default function ExtintorModal({ form, setForm, isEditing, onClose, onSave, saving, marcas, agentes, recargas, motivosBaja, serviciosExtra, socket, userRole }: Props) {
     const setEF = (k: string, v: string) => {
         setForm((p) => {
             const next = { ...p, [k]: v };
@@ -37,11 +47,16 @@ export default function ExtintorModal({ form, setForm, isEditing, onClose, onSav
                         <div className="grid grid-cols-2 gap-x-4 gap-y-3">
                             <ModalField label="N° Serie"><input className={modalInput} value={form.nSerie || ""} onChange={(e) => setEF("nSerie", e.target.value)} placeholder="Serie" /></ModalField>
                             <ModalField label="N° Interno"><input className={modalInput} value={form.nInterno || ""} onChange={(e) => setEF("nInterno", e.target.value)} placeholder="Interno" /></ModalField>
-                            <ModalField label="Marca">
-                                <select className={modalInput} value={form.marca || ""} onChange={(e) => setEF("marca", e.target.value)}>
-                                    <option value="">Seleccionar...</option>{MARCAS.map((m) => <option key={m}>{m}</option>)}
-                                </select>
-                            </ModalField>
+                            <CreatableSelect
+                                value={form.marca || ""}
+                                onChange={(v) => setEF("marca", v)}
+                                options={marcas}
+                                placeholder="Seleccionar marca..."
+                                catalogType="marca"
+                                socket={socket}
+                                userRole={userRole}
+                                className={modalInput}
+                            />
                             <ModalField label="Año Fab."><input className={modalInput} value={form.fechaFabricacion || ""} onChange={(e) => setEF("fechaFabricacion", e.target.value)} maxLength={4} placeholder="Ej: 2020" /></ModalField>
                         </div>
                     </ModalSection>
@@ -59,28 +74,56 @@ export default function ExtintorModal({ form, setForm, isEditing, onClose, onSav
                         <div className="grid grid-cols-2 gap-x-4 gap-y-3">
                             <ModalField label="Estado">
                                 <select className={modalInput} value={form.estadoExtintor || ""} onChange={(e) => setEF("estadoExtintor", e.target.value)}>
-                                    <option value="">Sel...</option>{ESTADOS.map((es) => <option key={es}>{es}</option>)}
+                                    <option value="">Seleccionar...</option>{ESTADOS.map((es) => <option key={es}>{es}</option>)}
                                 </select>
                             </ModalField>
                             <ModalField label="Agente">
-                                <select className={modalInput} value={form.agenteExtintor || ""} onChange={(e) => setEF("agenteExtintor", e.target.value)}>
-                                    <option value="">Sel...</option>{AGENTES.map((a) => <option key={a}>{a}</option>)}
-                                </select>
+                                <CreatableSelect
+                                    value={form.agenteExtintor || ""}
+                                    onChange={(v) => setEF("agenteExtintor", v)}
+                                    options={agentes}
+                                    placeholder="Seleccionar agente..."
+                                    catalogType="agente"
+                                    socket={socket}
+                                    userRole={userRole}
+                                    className={modalInput}
+                                />
                             </ModalField>
                             <ModalField label="Unidad">
                                 <div className="flex rounded-xl overflow-hidden border border-zinc-700">
-                                    {(["KG", "LB"] as const).map((u) => (
+                                    {(["KG", "LB", "LT"] as const).map((u) => (
                                         <button key={u} type="button" onClick={() => { setEF("unidadPeso", u); setEF("peso", ""); }} className={`flex-1 py-2.5 text-sm font-bold ${form.unidadPeso === u ? "bg-red-700 text-white" : "bg-zinc-800 text-zinc-400"}`}>{u}</button>
                                     ))}
                                 </div>
                             </ModalField>
                             <ModalField label="Peso">
                                 <select className={modalInput} value={form.peso || ""} onChange={(e) => setEF("peso", e.target.value)}>
-                                    <option value="">Sel...</option>{(form.unidadPeso === "LB" ? PESOS_LB : PESOS_KG).map((p) => <option key={p} value={p}>{p} {form.unidadPeso || "KG"}</option>)}
+                                    <option value="">Seleccionar...</option>{(form.unidadPeso === "LB" ? PESOS_LB : form.unidadPeso === "LT" ? PESOS_LT : PESOS_KG).map((p) => <option key={p} value={p}>{p} {form.unidadPeso || "KG"}</option>)}
                                 </select>
                             </ModalField>
                         </div>
                     </ModalSection>
+
+                    {/* Motivo de Baja (solo si estado = De Baja) */}
+                    {form.estadoExtintor === "De Baja" && (
+                        <ModalSection title="⚠️ Motivo de Baja">
+                            <MultiSelect
+                                // CAMBIO: split(",") + trim() a prueba de fallos
+                                selected={(form.motivoBaja || "").split(",").map(v => v.trim()).filter(Boolean)}
+                                onChange={(vals) => {
+                                    // CAMBIO: Solo guardamos el motivo, sin sobrescribir observaciones
+                                    const motivo = vals.map((v) => v.toUpperCase().trim()).join(", ");
+                                    setForm((p) => ({ ...p, motivoBaja: motivo }));
+                                }}
+                                options={motivosBaja}
+                                label="Motivos"
+                                catalogType="motivo_baja"
+                                socket={socket}
+                                userRole={userRole}
+                                className={modalInput}
+                            />
+                        </ModalSection>
+                    )}
 
                     {/* Servicio Realizado */}
                     <ModalSection title="🔧 Servicio Realizado">
@@ -93,12 +136,31 @@ export default function ExtintorModal({ form, setForm, isEditing, onClose, onSav
                             </ModalField>
                             <ModalField label="Recarga">
                                 <div className="flex flex-col gap-1.5">
-                                    {RECARGAS.map((r) => (
+                                    {recargas.map((r) => (
                                         <button key={r} type="button" onClick={() => setEF("recarga", form.recarga === r ? "" : r)} className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-semibold ${form.recarga === r ? "bg-amber-600 border-amber-500 text-white" : "bg-zinc-800 border-zinc-700 text-zinc-400"}`}>RE — {r}</button>
                                     ))}
                                 </div>
                             </ModalField>
                         </div>
+                    </ModalSection>
+
+                    {/* Servicio Extra */}
+                    <ModalSection title="🔧 Servicio Extra">
+                        <MultiSelect
+                            // CAMBIO: split(",") + trim() a prueba de fallos
+                            selected={(form.servicioExtra || "").split(",").map(v => v.trim()).filter(Boolean)}
+                            onChange={(vals) => {
+                                // CAMBIO: Solo guardamos el servicio extra
+                                const extra = vals.map((v) => v.toUpperCase().trim()).join(", ");
+                                setForm((p) => ({ ...p, servicioExtra: extra }));
+                            }}
+                            options={serviciosExtra}
+                            label="Servicios adicionales"
+                            catalogType="servicio_extra"
+                            socket={socket}
+                            userRole={userRole}
+                            className={modalInput}
+                        />
                     </ModalSection>
 
                     {/* Componentes */}
@@ -115,7 +177,31 @@ export default function ExtintorModal({ form, setForm, isEditing, onClose, onSav
 
                     {/* Observaciones */}
                     <ModalSection title="📝 Observaciones">
-                        <textarea className={`${modalInput} resize-none`} value={form.observaciones || ""} onChange={(e) => setEF("observaciones", e.target.value)} rows={3} placeholder="Notas adicionales..." />
+                        <div className="flex flex-col gap-3">
+                            {/* NUEVO: Contenedor de Badges dinámicos (Adaptado al Tema Oscuro) */}
+                            {(form.motivoBaja || form.servicioExtra) && (
+                                <div className="flex flex-col gap-1.5 p-3 bg-zinc-950/50 border border-dashed border-zinc-700 rounded-xl">
+                                    <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Se adjuntará al reporte final:</span>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {(form.motivoBaja || "").split(",").map(m => m.trim()).filter(Boolean).map(m => (
+                                            <span key={m} className="bg-red-950/80 text-red-400 text-xs font-bold px-2 py-1 rounded-md border border-red-900/50">⚠️ {m}</span>
+                                        ))}
+                                        {(form.servicioExtra || "").split(",").map(s => s.trim()).filter(Boolean).map(s => (
+                                            <span key={s} className="bg-amber-950/80 text-amber-400 text-xs font-bold px-2 py-1 rounded-md border border-amber-900/50">✨ {s}</span>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Textarea exclusivo para notas manuales */}
+                            <textarea
+                                className={`${modalInput} resize-none`}
+                                value={form.observaciones || ""}
+                                onChange={(e) => setEF("observaciones", e.target.value)}
+                                rows={3}
+                                placeholder="Escribe aquí notas adicionales o detalles específicos..."
+                            />
+                        </div>
                     </ModalSection>
                 </div>
 
