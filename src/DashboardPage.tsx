@@ -5,7 +5,8 @@ import { emptyExtintor, estadoColor, serviceBadge, downloadBase64 } from "./util
 import { useSocket } from "./hooks/useSocket";
 import {
   EmpresaModal, ExtintorModal, ArchivedModal, UsersModal,
-  WhatsappModal, ArchiveModal, DuplicateModal, ObservationModal, WeightSortModal
+  WhatsappModal, ArchiveModal, DuplicateModal, ObservationModal, WeightSortModal,
+  CertificadoModal
 } from "./components/modals";
 import { InfoSection, InfoRow, FilterSelect, MetricPanel, ComponentDots } from "./components/ui/DashboardUI";
 
@@ -34,12 +35,12 @@ function CatalogModal({ isOpen, onClose, catalogs, socket, userRole }: any) {
   const [archivedItems, setArchivedItems] = useState<any[]>([]);
 
   useEffect(() => {
-  if (isOpen && socket) {
-    socket.emit("catalog:deleted:list", { role: userRole }, (res: any) => {
-      if (res?.success) setArchivedItems(res.list);
-    });
-  }
-}, [isOpen, catalogs, socket, userRole]); // Eliminamos showArchived como disparador
+    if (isOpen && socket) {
+      socket.emit("catalog:deleted:list", { role: userRole }, (res: any) => {
+        if (res?.success) setArchivedItems(res.list);
+      });
+    }
+  }, [isOpen, catalogs, socket, userRole]); // Eliminamos showArchived como disparador
 
   if (!isOpen) return null;
 
@@ -62,7 +63,7 @@ function CatalogModal({ isOpen, onClose, catalogs, socket, userRole }: any) {
       else if (activeTab === "motivo_baja") items = catalogs.motivosBaja || [];
       else if (activeTab === "servicio_extra") items = catalogs.serviciosExtra || [];
     }
-    
+
     return [...items].sort((a, b) => (a.value || "").localeCompare(b.value || "", "es"));
   };
 
@@ -105,14 +106,14 @@ function CatalogModal({ isOpen, onClose, catalogs, socket, userRole }: any) {
           <div className="flex items-center gap-4">
             <h3 className="text-lg font-black text-white flex items-center gap-2">📖 Gestión de Catálogos</h3>
             {/* CAMBIO: Solo se muestra si existen archivados para la categoría activa */}
-{archivedItems.some(i => i.type === activeTab) && (
-  <button 
-    onClick={() => setShowArchived(!showArchived)} 
-    className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-all ${showArchived ? "bg-red-950/50 border-red-900/50 text-red-400" : "bg-zinc-900 border-zinc-700 text-zinc-400 hover:text-white"}`}
-  >
-    {showArchived ? "Ocultar Archivados" : "Ver Archivados"}
-  </button>
-)}
+            {archivedItems.some(i => i.type === activeTab) && (
+              <button
+                onClick={() => setShowArchived(!showArchived)}
+                className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-all ${showArchived ? "bg-red-950/50 border-red-900/50 text-red-400" : "bg-zinc-900 border-zinc-700 text-zinc-400 hover:text-white"}`}
+              >
+                {showArchived ? "Ocultar Archivados" : "Ver Archivados"}
+              </button>
+            )}
           </div>
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-500 hover:text-white transition-colors">✕</button>
         </div>
@@ -234,6 +235,7 @@ export default function DashboardPage({ user, onLogout }: { user: { id: string; 
   const [whatsappMsg, setWhatsappMsg] = useState("");
 
   const [obsModal, setObsModal] = useState<string | null>(null);
+  const [certModal, setCertModal] = useState(false);
 
   const [createEmpresaModal, setCreateEmpresaModal] = useState(false);
 
@@ -437,6 +439,27 @@ export default function DashboardPage({ user, onLogout }: { user: { id: string; 
       setExporting(false);
       if (res?.success && res.data) {
         downloadBase64(res.data, res.fileName, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      }
+    });
+  };
+
+  const exportCertificado = (config: any, format: "docx" | "pdf") => {
+    if (!socket || !selectedEmpresa?.id) return;
+    setExporting(true);
+    socket.emit("export:certificado", {
+      id: selectedEmpresa.id,
+      config,
+      format,
+    }, (res: any) => {
+      setExporting(false);
+      if (!res?.success) {
+        alert(res?.error || "Error al generar certificado");
+        return;
+      }
+      if (res.data) {
+        const mimeType = format === "pdf" ? "application/pdf" :
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+        downloadBase64(res.data, res.fileName, mimeType);
       }
     });
   };
@@ -1079,6 +1102,10 @@ export default function DashboardPage({ user, onLogout }: { user: { id: string; 
                         {exporting ? "⏳ Generando..." : "📥 Exportar Excel"}
                       </button>
 
+                      <button onClick={() => setCertModal(true)} disabled={exporting} className="px-4 py-2.5 rounded-xl bg-blue-950/30 hover:bg-blue-900/40 text-sm font-bold text-blue-400 border border-blue-800/50 transition-all flex items-center gap-2 disabled:opacity-50 hover:shadow-lg hover:shadow-blue-900/20 active:scale-95">
+                        📜 Certificado
+                      </button>
+
                       {selectedEmpresa.celular && (
                         <button onClick={openWhatsappModal} className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-sm font-bold text-white transition-all flex items-center gap-2 shadow-[0_0_15px_rgba(52,211,153,0.2)] hover:shadow-[0_0_20px_rgba(52,211,153,0.3)] hover:-translate-y-0.5 active:scale-95">
                           📲 Enviar por WhatsApp
@@ -1399,6 +1426,16 @@ export default function DashboardPage({ user, onLogout }: { user: { id: string; 
           currentOrder={customWeightOrder}
           onSave={(newOrder) => { setCustomWeightOrder(newOrder); setWeightOrderModal(false); }}
         />
+        {selectedEmpresa && (
+          <CertificadoModal
+            isOpen={certModal}
+            onClose={() => setCertModal(false)}
+            empresa={selectedEmpresa}
+            extintores={sortedExt}
+            exporting={exporting}
+            onExport={exportCertificado}
+          />
+        )}
 
       </main>
     </div>
