@@ -42,13 +42,13 @@ export default function WeightSortModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-zinc-950/80 backdrop-blur-sm animate-in fade-in">
-      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-md max-h-[85vh] shadow-2xl overflow-hidden flex flex-col">
         <div className="px-5 py-4 border-b border-zinc-800 flex justify-between items-center bg-zinc-950/50">
           <h3 className="text-lg font-black text-white">⚖️ Ordenar por Peso</h3>
           <button onClick={onClose} className="text-zinc-500 hover:text-white transition-colors">✕</button>
         </div>
 
-        <div className="p-5 flex flex-col gap-6">
+        <div className="p-5 flex flex-col gap-6 overflow-y-auto flex-1 min-h-0">
           {/* Pesos disponibles para añadir */}
           <div>
             <label className="text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2 block">Pesos Disponibles</label>

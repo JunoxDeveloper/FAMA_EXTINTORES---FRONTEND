@@ -1,5 +1,5 @@
 import type { Extintor } from "../../types";
-import { ESTADOS, PESOS_KG, PESOS_LB, PESOS_LT, COMP_KEYS, COMP_LABELS } from "../../constants";
+import { ESTADOS, PESOS_KG, PESOS_LB, PESOS_LT, PESOS_GAL, COMP_KEYS, COMP_LABELS } from "../../constants";
 import { ModalSection, ModalField, modalInput } from "../ui/ModalUI";
 import { CreatableSelect } from "../ui/CreatableSelect";
 import { MultiSelect } from "../ui/MultiSelect";
@@ -91,14 +91,14 @@ export default function ExtintorModal({ form, setForm, isEditing, onClose, onSav
                             </ModalField>
                             <ModalField label="Unidad">
                                 <div className="flex rounded-xl overflow-hidden border border-zinc-700">
-                                    {(["KG", "LB", "LT"] as const).map((u) => (
+                                    {(["KG", "LB", "LT", "GAL"] as const).map((u) => (
                                         <button key={u} type="button" onClick={() => { setEF("unidadPeso", u); setEF("peso", ""); }} className={`flex-1 py-2.5 text-sm font-bold ${form.unidadPeso === u ? "bg-red-700 text-white" : "bg-zinc-800 text-zinc-400"}`}>{u}</button>
                                     ))}
                                 </div>
                             </ModalField>
                             <ModalField label="Peso">
                                 <select className={modalInput} value={form.peso || ""} onChange={(e) => setEF("peso", e.target.value)}>
-                                    <option value="">Seleccionar...</option>{(form.unidadPeso === "LB" ? PESOS_LB : form.unidadPeso === "LT" ? PESOS_LT : PESOS_KG).map((p) => <option key={p} value={p}>{p} {form.unidadPeso || "KG"}</option>)}
+                                    <option value="">Seleccionar...</option>{(form.unidadPeso === "LB" ? PESOS_LB : form.unidadPeso === "LT" ? PESOS_LT : form.unidadPeso === "GAL" ? PESOS_GAL : PESOS_KG).map((p) => <option key={p} value={p}>{p} {form.unidadPeso || "KG"}</option>)}
                                 </select>
                             </ModalField>
                         </div>
@@ -108,10 +108,8 @@ export default function ExtintorModal({ form, setForm, isEditing, onClose, onSav
                     {form.estadoExtintor === "De Baja" && (
                         <ModalSection title="⚠️ Motivo de Baja">
                             <MultiSelect
-                                // CAMBIO: split(",") + trim() a prueba de fallos
                                 selected={(form.motivoBaja || "").split(",").map(v => v.trim()).filter(Boolean)}
                                 onChange={(vals) => {
-                                    // CAMBIO: Solo guardamos el motivo, sin sobrescribir observaciones
                                     const motivo = vals.map((v) => v.toUpperCase().trim()).join(", ");
                                     setForm((p) => ({ ...p, motivoBaja: motivo }));
                                 }}
@@ -147,10 +145,8 @@ export default function ExtintorModal({ form, setForm, isEditing, onClose, onSav
                     {/* Servicio Extra */}
                     <ModalSection title="🔧 Servicio Extra">
                         <MultiSelect
-                            // CAMBIO: split(",") + trim() a prueba de fallos
                             selected={(form.servicioExtra || "").split(",").map(v => v.trim()).filter(Boolean)}
                             onChange={(vals) => {
-                                // CAMBIO: Solo guardamos el servicio extra
                                 const extra = vals.map((v) => v.toUpperCase().trim()).join(", ");
                                 setForm((p) => ({ ...p, servicioExtra: extra }));
                             }}
@@ -178,7 +174,6 @@ export default function ExtintorModal({ form, setForm, isEditing, onClose, onSav
                     {/* Observaciones */}
                     <ModalSection title="📝 Observaciones">
                         <div className="flex flex-col gap-3">
-                            {/* NUEVO: Contenedor de Badges dinámicos (Adaptado al Tema Oscuro) */}
                             {(form.motivoBaja || form.servicioExtra) && (
                                 <div className="flex flex-col gap-1.5 p-3 bg-zinc-950/50 border border-dashed border-zinc-700 rounded-xl">
                                     <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider">Se adjuntará al reporte final:</span>
@@ -193,7 +188,6 @@ export default function ExtintorModal({ form, setForm, isEditing, onClose, onSav
                                 </div>
                             )}
 
-                            {/* Textarea exclusivo para notas manuales */}
                             <textarea
                                 className={`${modalInput} resize-none`}
                                 value={form.observaciones || ""}

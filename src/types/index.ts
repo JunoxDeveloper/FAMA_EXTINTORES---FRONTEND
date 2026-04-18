@@ -48,6 +48,8 @@ export type Extintor = {
   observaciones: string;
   servicioExtra: string;
   motivoBaja: string;
+  evidencia?: string; // JSON array de base64 strings, o flag "__HAS_EVIDENCIA__"
+  evidenciaCount?: number; // Cantidad de fotos (enviado por el backend en listados)
 };
 
 export type FormData = {
@@ -60,7 +62,7 @@ export type FormData = {
   estadoExtintor: string;
   agenteExtintor: string;
   peso: string;
-  unidadPeso: "KG" | "LB" | "LT";
+  unidadPeso: "KG" | "LB" | "LT" | "GAL";
   ma: boolean;
   recarga: string;
   ph: boolean;
@@ -71,6 +73,7 @@ export type FormData = {
   observaciones: string;
   servicioExtra: string;
   motivoBaja: string;
+  evidencias: string[]; // Array de base64 JPEG comprimidos
 };
 
 // Tipos específicos para las vistas

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { COMP_LABELS, MESES } from "./constants";
 import type { EmpresaItem, EmpresaData, Extintor, DashView } from "./types";
-import { emptyExtintor, estadoColor, serviceBadge, downloadBase64 } from "./utils/helpers";
+import { emptyExtintor, estadoColor, serviceBadge, downloadBase64, downloadEvidenciaAsPng } from "./utils/helpers";
 import { useSocket } from "./hooks/useSocket";
 import {
   EmpresaModal, ExtintorModal, ArchivedModal, UsersModal,
@@ -14,12 +14,13 @@ import { InfoSection, InfoRow, FilterSelect, MetricPanel, ComponentDots } from "
    ══════════════════════════════════════════ */
 const getWeightInKg = (weightStr: string) => {
   if (!weightStr || weightStr === "Sin definir") return 999999; // Los vacíos van al final
-  const match = weightStr.match(/([\d.]+)\s*(KG|LBS?|LT)/i);
+  const match = weightStr.match(/([\d.]+)\s*(KG|LBS?|LT|GAL)/i);
   if (!match) return 999999;
   const val = parseFloat(match[1]);
   const unit = match[2].toUpperCase();
-  // 1 Libra = 0.453592 Kilogramos
+  // 1 Libra = 0.453592 Kilogramos, 1 Galón ≈ 3.785 Litros
   if (unit.startsWith("LB")) return val * 0.453592;
+  if (unit === "GAL") return val * 3.785;
   return val;
 };
 
@@ -204,6 +205,13 @@ export default function DashboardPage({ user, onLogout }: { user: { id: string; 
   const [editingRowIndex, setEditingRowIndex] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [showMetrics, setShowMetrics] = useState(true);
+
+// Modal evidencia fotográfica (múltiples)
+  const [evidenciaModal, setEvidenciaModal] = useState(false);
+  const [evidenciaList, setEvidenciaList] = useState<string[]>([]);
+  const [evidenciaLoading, setEvidenciaLoading] = useState(false);
+  const [evidenciaExtInfo, setEvidenciaExtInfo] = useState<string>("");
+  const [evidenciaActiveIdx, setEvidenciaActiveIdx] = useState(0);
 
   // Filtros tabla
   const [fMarca, setFMarca] = useState("");
@@ -650,6 +658,29 @@ export default function DashboardPage({ user, onLogout }: { user: { id: string; 
     socket.emit("extintor:delete", { id: selectedEmpresa.id, rowIndex, role: user.role });
   };
 
+  const openEvidencia = (ext: Extintor) => {
+    if (!socket || ext.evidencia !== "__HAS_EVIDENCIA__") return;
+    setEvidenciaLoading(true);
+    setEvidenciaList([]);
+    setEvidenciaActiveIdx(0);
+    setEvidenciaExtInfo(`${ext.nSerie || "S-N"}_${ext.marca || ""}`);
+    setEvidenciaModal(true);
+    socket.emit("extintor:evidencia:get", { rowIndex: ext.rowIndex }, (res: any) => {
+      setEvidenciaLoading(false);
+      if (res?.success && res.evidencia) {
+        try {
+          const arr = JSON.parse(res.evidencia);
+          setEvidenciaList(Array.isArray(arr) ? arr : []);
+        } catch {
+          // Compatibilidad: si es un base64 suelto (dato antiguo), lo metemos en array
+          if (res.evidencia && res.evidencia !== "[]") {
+            setEvidenciaList([res.evidencia]);
+          }
+        }
+      }
+    });
+  };
+
   /* ── Filtro empresas ── */
   const availableYears = [...new Set(
     empresas
@@ -827,10 +858,20 @@ export default function DashboardPage({ user, onLogout }: { user: { id: string; 
     // Ordenar por cantidad (ascendente: los de menor cantidad primero)
     if (countA !== countB) return countA - countB;
 
-    // Desempate: Si tienen exactamente la misma cantidad, ordenar alfabéticamente
-    if (mA !== mB) return mA.localeCompare(mB);
+    // Desempate: Si tienen exactamente la misma cantidad, ordenar alfabéticamente por marca
+    if (mA !== mB) return mA.localeCompare(mB, "es");
 
-    return 0; // Si no hay filtros aplicados, mantiene el orden original
+    // 5. Último criterio: Alfabetización ascendente por N° Serie
+    const serieA = (a.nSerie || "").trim().toUpperCase();
+    const serieB = (b.nSerie || "").trim().toUpperCase();
+    if (serieA !== serieB) return serieA.localeCompare(serieB, "es");
+
+    // 6. Si la serie es igual, desempatar por N° Interno
+    const internoA = (a.nInterno || "").trim().toUpperCase();
+    const internoB = (b.nInterno || "").trim().toUpperCase();
+    if (internoA !== internoB) return internoA.localeCompare(internoB, "es");
+
+    return 0;
   });
 
   const totalExtintores = extintores.length;
@@ -842,7 +883,7 @@ export default function DashboardPage({ user, onLogout }: { user: { id: string; 
 
       {/* ════ HEADER GLOBAL ════ */}
       <header className="sticky top-0 z-30 backdrop-blur-2xl bg-zinc-950/80 border-b border-zinc-800/60 shadow-sm">
-        <div className="max-w-400 mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+        <div className="max-w-480 mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           {/* Izquierda: Logo + Back */}
           <div className="flex items-center gap-4">
             {view === "detail" && (
@@ -916,7 +957,7 @@ export default function DashboardPage({ user, onLogout }: { user: { id: string; 
         </div>
       </header>
 
-      <main className="max-w-400 mx-auto px-4 sm:px-6 py-6 sm:py-8">
+      <main className="max-w-480 mx-auto px-4 sm:px-6 py-6 sm:py-8">
 
         {/* ══════════════════════════════════
             VISTA: LISTA DE EMPRESAS
@@ -1238,6 +1279,8 @@ export default function DashboardPage({ user, onLogout }: { user: { id: string; 
                             <th className="px-5 py-4 border-b border-zinc-800" title="Prueba Hidrostática Vencimiento">PH Venc.</th>
                             <th className="px-5 py-4 border-b border-zinc-800">Servicio</th>
                             <th className="px-5 py-4 border-b border-zinc-800 min-w-35">Comp. Nuevos</th>
+                            <th className="px-5 py-4 border-b border-zinc-800">Serv. Extra</th>
+                            <th className="px-5 py-4 border-b border-zinc-800">Motivo Baja</th>
                             <th className="px-5 py-4 border-b border-zinc-800 max-w-50">Observaciones</th>
                             <th className="px-5 py-4 border-b border-zinc-800 text-center sticky right-0 bg-zinc-950 backdrop-blur-md">Acciones</th>
                           </tr>
@@ -1305,6 +1348,32 @@ export default function DashboardPage({ user, onLogout }: { user: { id: string; 
                                 <td className="px-5 py-3.5">
                                   <ComponentDots ext={ext} />
                                 </td>
+                                <td className="px-5 py-3.5">
+                                  {ext.servicioExtra ? (
+                                    <div className="flex flex-wrap gap-1">
+                                      {ext.servicioExtra.split(",").map(s => s.trim()).filter(Boolean).map(s => (
+                                        <span key={s} className="px-2 py-0.5 rounded-md text-[10px] font-black bg-amber-900/40 text-amber-400 border border-amber-800 shadow-sm whitespace-nowrap">
+                                          {s}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <span className="text-zinc-600 font-medium">—</span>
+                                  )}
+                                </td>
+                                <td className="px-5 py-3.5">
+                                  {ext.motivoBaja ? (
+                                    <div className="flex flex-wrap gap-1">
+                                      {ext.motivoBaja.split(",").map(m => m.trim()).filter(Boolean).map(m => (
+                                        <span key={m} className="px-2 py-0.5 rounded-md text-[10px] font-black bg-red-900/40 text-red-400 border border-red-800 shadow-sm whitespace-nowrap">
+                                          {m}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <span className="text-zinc-600 font-medium">—</span>
+                                  )}
+                                </td>
                                 <td className="px-5 py-3.5 text-xs max-w-50">
                                   {ext.observaciones ? (
                                     <button
@@ -1319,7 +1388,19 @@ export default function DashboardPage({ user, onLogout }: { user: { id: string; 
                                   )}
                                 </td>
                                 <td className="px-5 py-3.5 sticky right-0 bg-zinc-950/80 backdrop-blur-md group-hover:bg-zinc-800/90 transition-colors border-l border-zinc-800/40">
-                                  <div className="flex items-center justify-center gap-1.5">
+                                  <div className="flex items-center justify-end gap-1.5">
+                                    {ext.evidencia === "__HAS_EVIDENCIA__" && (
+                                      <button
+                                        onClick={() => openEvidencia(ext)}
+                                        className="w-8 h-8 rounded-xl bg-emerald-950/50 hover:bg-emerald-900/80 text-sm flex items-center justify-center border border-emerald-800/50 hover:border-emerald-600 transition-all hover:shadow-md hover:shadow-emerald-900/20 relative"
+                                        title={`Ver ${ext.evidenciaCount || 1} foto(s)`}
+                                      >
+                                        📷
+                                        {(ext.evidenciaCount || 0) > 1 && (
+                                          <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-emerald-500 text-white text-[9px] font-black flex items-center justify-center">{ext.evidenciaCount}</span>
+                                        )}
+                                      </button>
+                                    )}
                                     <button
                                       onClick={() => openEditExtintor(ext)}
                                       className="w-8 h-8 rounded-xl bg-zinc-800/80 hover:bg-zinc-700 text-sm flex items-center justify-center border border-zinc-700 transition-all hover:shadow-md"
@@ -1399,6 +1480,102 @@ export default function DashboardPage({ user, onLogout }: { user: { id: string; 
           currentOrder={customWeightOrder}
           onSave={(newOrder) => { setCustomWeightOrder(newOrder); setWeightOrderModal(false); }}
         />
+
+        {/* ════ MODAL: EVIDENCIA FOTOGRÁFICA (MÚLTIPLE) ════ */}
+        {evidenciaModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-lg max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+              <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between shrink-0 bg-zinc-900/50">
+                <h3 className="text-lg font-black text-white flex items-center gap-2">
+                  📷 Evidencia Fotográfica
+                  {evidenciaList.length > 1 && (
+                    <span className="px-2.5 py-0.5 rounded-lg bg-zinc-800 border border-zinc-700 text-xs font-bold text-zinc-300">
+                      {evidenciaActiveIdx + 1} / {evidenciaList.length}
+                    </span>
+                  )}
+                </h3>
+                <button onClick={() => { setEvidenciaModal(false); setEvidenciaList([]); }} className="w-8 h-8 flex items-center justify-center rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-500 hover:text-white transition-colors">✕</button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 flex flex-col items-center gap-4 min-h-0">
+                {evidenciaLoading ? (
+                  <div className="flex flex-col items-center justify-center gap-4 py-16 text-zinc-500">
+                    <div className="w-10 h-10 border-4 border-zinc-800 border-t-emerald-500 rounded-full animate-spin" />
+                    <p className="text-sm font-semibold">Cargando imágenes...</p>
+                  </div>
+                ) : evidenciaList.length > 0 ? (
+                  <>
+                    {/* Imagen principal */}
+                    <div className="rounded-2xl overflow-hidden border border-zinc-700 bg-zinc-950/50 shadow-lg w-full relative">
+                      <img
+                        src={`data:image/jpeg;base64,${evidenciaList[evidenciaActiveIdx]}`}
+                        alt={`Evidencia ${evidenciaActiveIdx + 1}`}
+                        className="w-full object-contain max-h-[50vh]"
+                      />
+                      {/* Flechas de navegación */}
+                      {evidenciaList.length > 1 && (
+                        <>
+                          <button
+                            onClick={() => setEvidenciaActiveIdx(i => Math.max(0, i - 1))}
+                            disabled={evidenciaActiveIdx === 0}
+                            className="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 hover:bg-black/80 text-white text-lg flex items-center justify-center disabled:opacity-30 transition-all active:scale-95"
+                          >
+                            ‹
+                          </button>
+                          <button
+                            onClick={() => setEvidenciaActiveIdx(i => Math.min(evidenciaList.length - 1, i + 1))}
+                            disabled={evidenciaActiveIdx === evidenciaList.length - 1}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/60 hover:bg-black/80 text-white text-lg flex items-center justify-center disabled:opacity-30 transition-all active:scale-95"
+                          >
+                            ›
+                          </button>
+                        </>
+                      )}
+                    </div>
+
+                    {/* Thumbnails (si hay más de 1) */}
+                    {evidenciaList.length > 1 && (
+                      <div className="flex gap-2 overflow-x-auto w-full py-1 scrollbar-hide">
+                        {evidenciaList.map((b64, idx) => (
+                          <button
+                            key={idx}
+                            onClick={() => setEvidenciaActiveIdx(idx)}
+                            className={`w-16 h-16 rounded-xl overflow-hidden border-2 shrink-0 transition-all active:scale-95 ${idx === evidenciaActiveIdx ? "border-emerald-500 shadow-lg shadow-emerald-900/30 ring-2 ring-emerald-500/30" : "border-zinc-700 hover:border-zinc-500 opacity-60 hover:opacity-100"}`}
+                          >
+                            <img src={`data:image/jpeg;base64,${b64}`} alt={`Thumb ${idx + 1}`} className="w-full h-full object-cover" />
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Botones de descarga */}
+                    <div className="flex gap-3 w-full">
+                      <button
+                        onClick={() => downloadEvidenciaAsPng(evidenciaList[evidenciaActiveIdx], `Evidencia_${evidenciaExtInfo}_${evidenciaActiveIdx + 1}`)}
+                        className="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-sm font-bold text-white transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/20 hover:-translate-y-0.5 active:scale-95"
+                      >
+                        📥 Descargar esta foto (PNG)
+                      </button>
+                      {evidenciaList.length > 1 && (
+                        <button
+                          onClick={() => evidenciaList.forEach((b64, i) => setTimeout(() => downloadEvidenciaAsPng(b64, `Evidencia_${evidenciaExtInfo}_${i + 1}`), i * 500))}
+                          className="py-3 px-5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-sm font-bold text-zinc-300 hover:text-white border border-zinc-700 transition-all flex items-center justify-center gap-2 active:scale-95"
+                        >
+                          📦 Todas ({evidenciaList.length})
+                        </button>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex flex-col items-center justify-center gap-3 py-16 text-zinc-500">
+                    <span className="text-5xl">🚫</span>
+                    <p className="text-sm font-semibold">No se pudo cargar las imágenes</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
       </main>
     </div>

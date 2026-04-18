@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { ESTADOS, PESOS_KG, PESOS_LB, PESOS_LT, COMP_KEYS, COMP_LABELS, DISTRITOS_LIMA } from "./constants";
+import { ESTADOS, PESOS_KG, PESOS_LB, PESOS_LT, PESOS_GAL, COMP_KEYS, COMP_LABELS, DISTRITOS_LIMA } from "./constants";
 import type { EmpresaItem, EmpresaData, Extintor, FormData, WorkerView as View } from "./types";
-import { emptyForm, emptyEmpresa } from "./utils/helpers";
+import { emptyForm, emptyEmpresa, compressImage } from "./utils/helpers";
 import { useSocket } from "./hooks/useSocket";
 import { Card, Field, Toggle, SiNo, inputCls } from "./components/ui/WorkerUI";
 import { CreatableSelect } from "./components/ui/CreatableSelect";
@@ -28,6 +28,65 @@ export default function App({ user, onLogout }: { user: { id: string; username: 
 
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: "ok" | "err" } | null>(null);
+
+  // Ref para el input de cámara
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const [compressingPhoto, setCompressingPhoto] = useState(false);
+  const MAX_EVIDENCIAS = 5;
+  const FORM_STORAGE_KEY = "fama_worker_form_backup";
+
+  // Persistir estado del formulario antes de que la cámara cause un reload
+  const persistFormState = () => {
+    try {
+      const snapshot = {
+        form,
+        editingRow,
+        activeId: activeIdRef.current,
+        view,
+        empresaRazonSocial: empresa.razonSocial,
+      };
+      sessionStorage.setItem(FORM_STORAGE_KEY, JSON.stringify(snapshot));
+    } catch { /* sessionStorage lleno o no disponible */ }
+  };
+
+  const clearFormBackup = () => {
+    try { sessionStorage.removeItem(FORM_STORAGE_KEY); } catch { /* ignore */ }
+  };
+
+  // Al montar, intentar restaurar estado si la cámara causó un reload
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(FORM_STORAGE_KEY);
+      if (!raw) return;
+      const snapshot = JSON.parse(raw);
+
+      if (snapshot.form && snapshot.view === "form") {
+        setForm(snapshot.form);
+        setEditingRow(snapshot.editingRow ?? null);
+
+        if (snapshot.activeId) {
+          changeActiveId(snapshot.activeId);
+          if (socket) {
+            socket.emit("empresa:get", { id: snapshot.activeId });
+            socket.emit("extintor:list", { id: snapshot.activeId });
+          }
+        }
+
+        setView("form");
+
+        // Limpiar backup después de restaurar
+        clearFormBackup();
+
+        showToast("Formulario restaurado ✓");
+      } else {
+        clearFormBackup();
+      }
+    } catch {
+      clearFormBackup();
+    }
+  // Solo al montar el componente
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [socket]);
 
   const showToast = (msg: string, type: "ok" | "err" = "ok") => {
     setToast({ msg, type });
@@ -116,16 +175,19 @@ export default function App({ user, onLogout }: { user: { id: string; username: 
   const handleExtintorSave = () => {
     if (!socket || !activeId) return;
     setSaving(true);
+    const { evidencias, ...formWithoutEvidencias } = form;
     const payload = {
-      ...form, id: activeId,
+      ...formWithoutEvidencias, id: activeId,
       nSerie: form.nSerie.trim() === "" ? "S/N" : form.nSerie.trim(),
       ma: form.ma ? "SI" : "", ph: form.ph ? "SI" : "", servicioExtra: form.servicioExtra, motivoBaja: form.motivoBaja,
+      evidencia: JSON.stringify(evidencias || []),
     };
     if (editingRow !== null) {
       socket.emit("extintor:update", { ...payload, rowIndex: editingRow }, (res: any) => {
         setSaving(false);
         if (res?.success) {
           showToast("Actualizado ✓");
+          clearFormBackup();
           setView("lista");
           setEditingRow(null);
           setForm(emptyForm());
@@ -137,6 +199,7 @@ export default function App({ user, onLogout }: { user: { id: string; username: 
         setSaving(false);
         if (res?.success) {
           showToast("Extintor guardado ✓");
+          clearFormBackup();
           setView("lista");
           setForm(emptyForm());
         } else showToast(res?.error || "Error", "err");
@@ -145,19 +208,38 @@ export default function App({ user, onLogout }: { user: { id: string; username: 
   };
 
   const handleEdit = (ext: Extintor) => {
-    setForm({
-      nSerie: ext.nSerie, nInterno: ext.nInterno, marca: ext.marca,
-      fechaFabricacion: ext.fechaFabricacion, realizadoPH: ext.realizadoPH,
-      vencimPH: ext.vencimPH, estadoExtintor: ext.estadoExtintor,
-      agenteExtintor: ext.agenteExtintor, peso: ext.peso,
-      unidadPeso: (ext.unidadPeso as "KG" | "LB" | "LT") || "KG",
-      ma: ext.ma === "SI", recarga: ext.recarga, ph: ext.ph === "SI",
-      valvula: ext.valvula, manguera: ext.manguera, manometro: ext.manometro,
-      tobera: ext.tobera, observaciones: ext.observaciones, servicioExtra: ext.servicioExtra || "",
-      motivoBaja: ext.motivoBaja || "",
-    });
-    setEditingRow(ext.rowIndex);
-    setView("form");
+    // Cuando editamos, cargamos la evidencia completa del servidor
+    const loadForm = () => {
+      setForm({
+        nSerie: ext.nSerie, nInterno: ext.nInterno, marca: ext.marca,
+        fechaFabricacion: ext.fechaFabricacion, realizadoPH: ext.realizadoPH,
+        vencimPH: ext.vencimPH, estadoExtintor: ext.estadoExtintor,
+        agenteExtintor: ext.agenteExtintor, peso: ext.peso,
+        unidadPeso: (ext.unidadPeso as "KG" | "LB" | "LT" | "GAL") || "KG",
+        ma: ext.ma === "SI", recarga: ext.recarga, ph: ext.ph === "SI",
+        valvula: ext.valvula, manguera: ext.manguera, manometro: ext.manometro,
+        tobera: ext.tobera, observaciones: ext.observaciones, servicioExtra: ext.servicioExtra || "",
+        motivoBaja: ext.motivoBaja || "",
+        evidencias: [],
+      });
+      setEditingRow(ext.rowIndex);
+      setView("form");
+    };
+
+    // Si tiene evidencia, cargarla del servidor
+    // Si tiene evidencia, cargarla del servidor
+    if (ext.evidencia === "__HAS_EVIDENCIA__" && socket) {
+      socket.emit("extintor:evidencia:get", { rowIndex: ext.rowIndex }, (res: any) => {
+        if (res?.success) {
+          try {
+            const arr = JSON.parse(res.evidencia || "[]");
+            setForm(prev => ({ ...prev, evidencias: Array.isArray(arr) ? arr : [] }));
+          } catch { /* ignore parse error */ }
+        }
+      });
+    }
+
+    loadForm();
   };
 
   const handleDelete = (rowIndex: number) => {
@@ -167,6 +249,39 @@ export default function App({ user, onLogout }: { user: { id: string; username: 
       else showToast("Error al eliminar", "err");
     }
     );
+  };
+
+  // Handler para captura de foto con cámara
+  const handleCameraCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setCompressingPhoto(true);
+    try {
+      const b64 = await compressImage(file, 800, 0.5);
+      setForm((p) => {
+        if (p.evidencias.length >= MAX_EVIDENCIAS) {
+          showToast(`Máximo ${MAX_EVIDENCIAS} fotos permitidas`, "err");
+          return p;
+        }
+        return { ...p, evidencias: [...p.evidencias, b64] };
+      });
+      showToast("Foto capturada ✓");
+    } catch (err) {
+      showToast("Error al procesar la foto", "err");
+    } finally {
+      setCompressingPhoto(false);
+      // Limpiar el input para poder tomar otra foto
+      if (cameraInputRef.current) cameraInputRef.current.value = "";
+    }
+  };
+
+  const removeEvidencia = (index: number) => {
+    setForm((p) => ({
+      ...p,
+      evidencias: p.evidencias.filter((_, i) => i !== index),
+    }));
+    showToast("Foto eliminada");
   };
 
   const setF = (k: keyof FormData) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setForm((p) => ({ ...p, [k]: e.target.value }));
@@ -234,7 +349,7 @@ export default function App({ user, onLogout }: { user: { id: string; username: 
               <button
                 key={v}
                 onClick={() => {
-                  if (v === "form") { setForm(emptyForm()); setEditingRow(null); }
+                  if (v === "form") { setForm(emptyForm()); setEditingRow(null); clearFormBackup(); }
                   setView(v);
                 }}
                 className={`flex-1 min-w-fit px-4 py-2.5 md:py-3 rounded-xl text-xs md:text-sm font-bold transition-all active:scale-95 ${isActive ? "bg-red-700 text-white shadow-md shadow-red-900/20" : "bg-zinc-100/80 text-zinc-500 hover:bg-zinc-200 hover:text-zinc-800"}`}
@@ -255,6 +370,16 @@ export default function App({ user, onLogout }: { user: { id: string; username: 
           {toast.type === "ok" ? "✅" : "⚠️"} {toast.msg}
         </div>
       )}
+
+      {/* Input oculto para la cámara */}
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={handleCameraCapture}
+      />
 
       <main className="flex-1 overflow-hidden relative bg-zinc-50/50">
 
@@ -411,6 +536,16 @@ export default function App({ user, onLogout }: { user: { id: string; username: 
                           </span>
                         </div>
                         <div className="flex gap-1.5 shrink-0 ml-2">
+                          {/* Indicador de evidencia */}
+                          {/* Indicador de evidencia */}
+                          {ext.evidencia === "__HAS_EVIDENCIA__" && (
+                            <span className="w-9 h-9 rounded-xl bg-emerald-50 border border-emerald-200 text-sm flex items-center justify-center relative" title={`${ext.evidenciaCount || 1} foto(s)`}>
+                              📷
+                              {(ext.evidenciaCount || 0) > 1 && (
+                                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-600 text-white text-[9px] font-black flex items-center justify-center">{ext.evidenciaCount}</span>
+                              )}
+                            </span>
+                          )}
                           <button onClick={() => handleEdit(ext)} className="w-9 h-9 rounded-xl bg-white border border-zinc-200 text-sm hover:bg-zinc-100 hover:text-red-600 transition-colors flex items-center justify-center shadow-sm active:scale-95" title="Editar">
                             ✏️
                           </button>
@@ -500,7 +635,7 @@ export default function App({ user, onLogout }: { user: { id: string; username: 
               </div>
             </Card>
 
-            {/* 2. PRUEBA HIDROSTÁTICA & CARACTERÍSTICAS (50/50 Grid con Motivo de Baja dinámico) */}
+            {/* 2. PRUEBA HIDROSTÁTICA & CARACTERÍSTICAS */}
             <div className="grid grid-cols-2 md:grid-cols-2 gap-6 items-start">
               <Card title="🔬 Prueba Hidrostática">
                 <div className="flex flex-col gap-5">
@@ -513,11 +648,10 @@ export default function App({ user, onLogout }: { user: { id: string; username: 
                 </div>
               </Card>
 
-              {/* Columna derecha: Características + Motivo de Baja (si aplica) */}
               <div className="flex flex-col gap-6">
                 <Card title="⚗️ Características del Extintor">
                   <div className="flex flex-col gap-5">
-                    <div className="flex flex-col gap-4"> {/* CAMBIO: flex-col en lugar de grid-cols-2 */}
+                    <div className="flex flex-col gap-4">
                       <Field label="Estado">
                         <select className={inputCls} value={form.estadoExtintor} onChange={setF("estadoExtintor")}>
                           <option value="">Seleccionar...</option>
@@ -539,9 +673,8 @@ export default function App({ user, onLogout }: { user: { id: string; username: 
                     </div>
                     <Field label="Peso y Unidad">
                       <div className="flex flex-col xl:flex-row gap-3">
-                        <div className="flex w-full rounded-xl overflow-hidden border-2 border-zinc-200 shrink-0 bg-zinc-50 shadow-sm p-1 gap-1"> {/* CAMBIO: Se agregó w-full */}
-                          {(["KG", "LB", "LT"] as const).map((u) => (
-                            // CAMBIO: Se reemplazó px-4 por flex-1 para que se estiren equitativamente
+                        <div className="flex w-full rounded-xl overflow-hidden border-2 border-zinc-200 shrink-0 bg-zinc-50 shadow-sm p-1 gap-1">
+                          {(["KG", "LB", "LT", "GAL"] as const).map((u) => (
                             <button key={u} type="button" onClick={() => setForm((p) => ({ ...p, unidadPeso: u, peso: "" }))} className={`flex-1 py-1.5 rounded-lg text-sm font-black transition-all text-center ${form.unidadPeso === u ? "bg-red-600 text-white shadow-md" : "text-zinc-400 hover:text-zinc-800 hover:bg-zinc-200/50"}`}>
                               {u}
                             </button>
@@ -549,7 +682,7 @@ export default function App({ user, onLogout }: { user: { id: string; username: 
                         </div>
                         <select className={`${inputCls} flex-1`} value={form.peso} onChange={setF("peso")}>
                           <option value="">Seleccionar peso...</option>
-                          {(form.unidadPeso === "LB" ? PESOS_LB : form.unidadPeso === "LT" ? PESOS_LT : PESOS_KG).map((p) => (
+                          {(form.unidadPeso === "LB" ? PESOS_LB : form.unidadPeso === "LT" ? PESOS_LT : form.unidadPeso === "GAL" ? PESOS_GAL : PESOS_KG).map((p) => (
                             <option key={p} value={p}>{p} {form.unidadPeso}</option>
                           ))}
                         </select>
@@ -563,10 +696,8 @@ export default function App({ user, onLogout }: { user: { id: string; username: 
                 <div className="col-span-2 animate-in fade-in slide-in-from-top-4 duration-300">
                   <Card title="⚠️ Motivo de Baja">
                     <MultiSelect
-                      // CAMBIO: split(",") más un trim() asegura que funcione aunque falten espacios
                       selected={form.motivoBaja.split(",").map(v => v.trim()).filter(Boolean)}
                       onChange={(vals) => {
-                        // CAMBIO: Se aplica trim() antes de guardar para mantener limpieza de datos
                         const motivo = vals.map((v) => v.toUpperCase().trim()).join(", ");
                         setForm((p) => ({ ...p, motivoBaja: motivo }));
                       }}
@@ -582,7 +713,7 @@ export default function App({ user, onLogout }: { user: { id: string; username: 
               )}
             </div>
 
-            {/* 3. SERVICIOS (50/50 Grid estirado para igualar alturas) */}
+            {/* 3. SERVICIOS */}
             <div className="grid grid-cols-2 md:grid-cols-2 gap-6 items-stretch">
               <Card title="🔧 Servicio Realizado">
                 <div className="flex flex-col gap-4 h-full">
@@ -620,7 +751,7 @@ export default function App({ user, onLogout }: { user: { id: string; username: 
               </Card>
             </div>
 
-            {/* 4. COMPONENTES Y OBSERVACIONES (50/50 Grid estirado) */}
+            {/* 4. COMPONENTES Y OBSERVACIONES */}
             <div className="grid grid-cols-2 md:grid-cols-2 gap-6 items-stretch">
               <Card title="🔩 Componentes Instalados">
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-1 lg:grid-cols-2 gap-x-6 lg:gap-x-10 gap-y-3 w-full">
@@ -637,8 +768,6 @@ export default function App({ user, onLogout }: { user: { id: string; username: 
 
               <Card title="📝 Observaciones">
                 <div className="flex flex-col gap-3 h-full">
-
-                  {/* NUEVO: Contenedor de Badges dinámicos */}
                   {(form.motivoBaja || form.servicioExtra) && (
                     <div className="flex flex-col gap-1.5 p-3 bg-zinc-50 border-2 border-dashed border-zinc-200 rounded-xl">
                       <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Se adjuntará al reporte final:</span>
@@ -653,7 +782,6 @@ export default function App({ user, onLogout }: { user: { id: string; username: 
                     </div>
                   )}
 
-                  {/* Textarea exclusivo para notas manuales */}
                   <textarea
                     className={`${inputCls} resize-none flex-1 w-full min-h-30`}
                     value={form.observaciones}
@@ -664,9 +792,73 @@ export default function App({ user, onLogout }: { user: { id: string; username: 
               </Card>
             </div>
 
-            {/* 5. BOTONES DE ACCIÓN */}
+            {/* 5. EVIDENCIA FOTOGRÁFICA */}
+            <Card title={`📷 Evidencia Fotográfica (${form.evidencias.length}/${MAX_EVIDENCIAS})`}>
+              <div className="flex flex-col gap-4">
+                {/* Grid de fotos existentes */}
+                {form.evidencias.length > 0 && (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {form.evidencias.map((b64, idx) => (
+                      <div key={idx} className="relative rounded-xl overflow-hidden border-2 border-emerald-200 bg-emerald-50/30 shadow-sm group">
+                        <img
+                          src={`data:image/jpeg;base64,${b64}`}
+                          alt={`Evidencia ${idx + 1}`}
+                          className="w-full h-32 object-cover"
+                        />
+                        <div className="absolute top-1.5 left-1.5">
+                          <span className="w-6 h-6 rounded-lg bg-black/60 text-white text-[10px] font-black flex items-center justify-center">{idx + 1}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeEvidencia(idx)}
+                          className="absolute top-1.5 right-1.5 w-7 h-7 rounded-lg bg-red-500/90 hover:bg-red-600 text-white shadow-lg flex items-center justify-center text-xs active:scale-95 transition-all opacity-0 group-hover:opacity-100"
+                          title="Eliminar esta foto"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Botón para agregar más fotos */}
+                {form.evidencias.length < MAX_EVIDENCIAS && (
+                  <button
+                    type="button"
+                    onClick={() => { persistFormState(); cameraInputRef.current?.click(); }}
+                    disabled={compressingPhoto}
+                    className={`flex flex-col items-center justify-center gap-3 border-2 border-dashed rounded-2xl transition-all active:scale-95 cursor-pointer group ${form.evidencias.length > 0 ? "py-5 border-zinc-200 bg-zinc-50/30 hover:bg-emerald-50/30 hover:border-emerald-300" : "py-10 border-zinc-300 bg-zinc-50/50 hover:bg-red-50/50 hover:border-red-300"}`}
+                  >
+                    {compressingPhoto ? (
+                      <>
+                        <div className="w-10 h-10 border-4 border-zinc-200 border-t-red-500 rounded-full animate-spin" />
+                        <span className="text-sm font-bold text-zinc-500">Procesando imagen...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span className={`${form.evidencias.length > 0 ? "text-3xl" : "text-5xl"} group-hover:scale-110 transition-transform`}>📸</span>
+                        <span className="text-sm font-bold text-zinc-600 group-hover:text-red-600 transition-colors">
+                          {form.evidencias.length > 0 ? "Agregar Otra Foto" : "Tomar Foto del Extintor"}
+                        </span>
+                        {form.evidencias.length === 0 && (
+                          <span className="text-[10px] text-zinc-400 font-medium">
+                            Se abrirá la cámara de tu dispositivo
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </button>
+                )}
+
+                {form.evidencias.length >= MAX_EVIDENCIAS && (
+                  <p className="text-xs text-amber-600 font-bold text-center">Se alcanzó el límite de {MAX_EVIDENCIAS} fotos</p>
+                )}
+              </div>
+            </Card>
+
+            {/* 6. BOTONES DE ACCIÓN */}
             <div className="flex flex-col sm:flex-row gap-4 pt-4 pb-8 border-t border-zinc-200 mt-2">
-              <button onClick={() => { setView("lista"); setEditingRow(null); }} className="order-2 sm:order-1 flex-1 py-4 md:py-5 rounded-2xl border-2 border-zinc-300 text-zinc-600 font-black text-sm md:text-base hover:bg-zinc-100 hover:border-zinc-400 transition-colors active:scale-95">
+              <button onClick={() => { setView("lista"); setEditingRow(null); clearFormBackup(); }} className="order-2 sm:order-1 flex-1 py-4 md:py-5 rounded-2xl border-2 border-zinc-300 text-zinc-600 font-black text-sm md:text-base hover:bg-zinc-100 hover:border-zinc-400 transition-colors active:scale-95">
                 Cancelar
               </button>
               <button onClick={handleExtintorSave} disabled={saving || !connected} className="order-1 sm:order-2 flex-2 py-4 md:py-5 rounded-2xl bg-red-700 text-white font-black text-sm md:text-base disabled:opacity-50 hover:bg-red-600 shadow-xl shadow-red-900/20 transition-all hover:-translate-y-0.5 active:scale-95 flex items-center justify-center gap-2">
