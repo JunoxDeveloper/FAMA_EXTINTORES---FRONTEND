@@ -5,6 +5,9 @@ import "./index.css";
 import App from "./WorkerPage.tsx";
 import DashboardPage from "./DashboardPage.tsx";
 import LoginPage from "./LoginPage.tsx";
+import ScanGatewayPage from "./ScanGatewayPage.tsx";
+import RegistrarExtintorPage from "./RegistrarExtintorPage.tsx";
+import InspeccionPage from "./InspeccionPage.tsx";
 
 type UserRole = "worker" | "admin" | "boss";
 type UserData = { id: string; username: string; role: UserRole; displayName: string };
@@ -26,25 +29,25 @@ function Root() {
     setUser(null);
   };
 
-  if (!user) return <LoginPage onLogin={handleLogin} />;
-
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={
-          user.role === "boss"
-            ? <Navigate to="/dashboard" replace />
-            : <App user={user} onLogout={handleLogout} />
+        <Route path="/scan/:uid" element={
+          user ? <ScanGatewayPage user={user} /> : <LoginPage onLogin={handleLogin} />
         } />
-        <Route
-          path="/dashboard"
-          element={
-            user.role === "admin" || user.role === "boss"
+        <Route path="/scan/:uid/registrar" element={user ? <RegistrarExtintorPage user={user} /> : <LoginPage onLogin={handleLogin} />} />
+        <Route path="/scan/:uid/inspeccion" element={user ? <InspeccionPage user={user} /> : <LoginPage onLogin={handleLogin} />} />
+        <Route path="/" element={
+          !user ? <LoginPage onLogin={handleLogin} /> :
+            user.role === "boss" ? <Navigate to="/dashboard" replace /> : <App user={user} onLogout={handleLogout} />
+        } />
+        <Route path="/dashboard" element={
+          !user ? <LoginPage onLogin={handleLogin} /> :
+            (user.role === "admin" || user.role === "boss")
               ? <DashboardPage user={user} onLogout={handleLogout} />
               : <Navigate to="/" replace />
-          }
-        />
-        <Route path="/app" element={<App user={user} onLogout={handleLogout} />} />
+        } />
+        <Route path="/app" element={!user ? <LoginPage onLogin={handleLogin} /> : <App user={user} onLogout={handleLogout} />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>

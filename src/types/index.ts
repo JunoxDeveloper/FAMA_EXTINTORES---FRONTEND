@@ -30,6 +30,7 @@ export type EmpresaData = {
 
 export type Extintor = {
   rowIndex: number;
+  uid?: string;
   n?: string; // Usado en Worker
   nSerie: string;
   nInterno: string;

@@ -5,7 +5,7 @@ import { emptyExtintor, estadoColor, serviceBadge, downloadBase64, downloadEvide
 import { useSocket } from "./hooks/useSocket";
 import {
   EmpresaModal, ExtintorModal, ArchivedModal, UsersModal,
-  WhatsappModal, ArchiveModal, DuplicateModal, ObservationModal, WeightSortModal
+  WhatsappModal, ArchiveModal, DuplicateModal, ObservationModal, WeightSortModal, StickersModal
 } from "./components/modals";
 import { InfoSection, InfoRow, FilterSelect, MetricPanel, ComponentDots } from "./components/ui/DashboardUI";
 
@@ -173,6 +173,7 @@ export default function DashboardPage({ user, onLogout }: { user: { id: string; 
 
   // Duplicar empresa
   const [duplicateModal, setDuplicateModal] = useState(false);
+  const [stickersModal, setStickersModal] = useState(false);
   const [duplicateWithExt, setDuplicateWithExt] = useState(false);
 
   // Search
@@ -568,10 +569,6 @@ export default function DashboardPage({ user, onLogout }: { user: { id: string; 
     if (!socket || !selectedEmpresa?.id) return;
     setSaving(true);
 
-    // "evidencia" aquí solo trae el flag "__HAS_EVIDENCIA__" (no las fotos reales)
-    // y "evidenciaCount"/"deletedAt" no deben enviarse en la actualización:
-    // "evidenciaCount" no es una columna real de la entidad y provoca que
-    // TypeORM rechace el UPDATE completo (por eso los cambios no se guardaban).
     const { evidencia, evidenciaCount, deletedAt, ...formSinFlags } = extintorForm as any;
     const bloqueado = estadoBloqueaServicio(extintorForm.estadoExtintor || "");
 
@@ -584,7 +581,7 @@ export default function DashboardPage({ user, onLogout }: { user: { id: string; 
       ph: bloqueado ? "" : extintorForm.ph,
       recarga: bloqueado ? "" : extintorForm.recarga,
       servicioExtra: estadoBloqueaServicioExtra(extintorForm.estadoExtintor || "") ? "" : extintorForm.servicioExtra,
-    }; 
+    };
 
     if (editingRowIndex !== null) {
       socket.emit("extintor:update", { ...payload, rowIndex: editingRowIndex }, (res: any) => {
@@ -1086,6 +1083,11 @@ export default function DashboardPage({ user, onLogout }: { user: { id: string; 
                         {exporting ? "⏳ Generando..." : "📥 Exportar Excel"}
                       </button>
 
+                      <button onClick={() => setStickersModal(true)} className="px-4 py-2.5 rounded-xl bg-amber-950/30 hover:bg-amber-900/40 text-sm font-bold text-amber-400 border border-amber-800/50 transition-all flex items-center gap-2 hover:shadow-lg hover:shadow-amber-900/20 active:scale-95">
+                        🏷️ Descargar Stickers
+                      </button>
+
+
                       {selectedEmpresa.celular && (
                         <button onClick={openWhatsappModal} className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-sm font-bold text-white transition-all flex items-center gap-2 shadow-[0_0_15px_rgba(52,211,153,0.2)] hover:shadow-[0_0_20px_rgba(52,211,153,0.3)] hover:-translate-y-0.5 active:scale-95">
                           📲 Enviar por WhatsApp
@@ -1407,6 +1409,16 @@ export default function DashboardPage({ user, onLogout }: { user: { id: string; 
         {extintorModal && (
           <ExtintorModal form={extintorForm} setForm={setExtintorForm} isEditing={editingRowIndex !== null} onClose={() => setExtintorModal(false)} onSave={saveExtintor} saving={saving} marcas={MARCAS} agentes={AGENTES} recargas={RECARGAS} motivosBaja={MOTIVOS_BAJA} serviciosExtra={SERVICIOS_EXTRA} socket={socket} userRole={user.role} />
         )}
+
+        {stickersModal && (
+          <StickersModal
+            isOpen={stickersModal}
+            onClose={() => setStickersModal(false)}
+            extintores={extintores}
+            empresa={selectedEmpresa!}
+          />
+        )}
+
         <UsersModal isOpen={usersModal} onClose={() => setUsersModal(false)} usersList={usersList} userForm={userForm} setUserForm={setUserForm} editingUserId={editingUserId} setEditingUserId={setEditingUserId} savingUser={savingUser} userError={userError} onSave={saveUser} onDelete={deleteUser} />
         <ArchivedModal isOpen={archivedView} onClose={() => setArchivedView(false)} tab={archivedTab} setTab={setArchivedTab} empresas={archivedEmpresas} extintores={archivedExtintores} loading={loadingArchived} expanded={expandedArchived} setExpanded={setExpandedArchived} onRestoreEmpresa={restoreEmpresa} onHardDeleteEmpresa={hardDeleteEmpresa} onRestoreExtintor={restoreExtintor} onHardDeleteExtintor={hardDeleteExtintor} userRole={user.role} />
 
