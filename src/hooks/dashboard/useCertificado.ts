@@ -3,7 +3,7 @@ import type { Socket } from "socket.io-client";
 import { MESES } from "../../constants";
 import { formatVencimPH, formatRealizadoPH } from "../../utils/helpers";
 import type { CertificadoDatos, CertificadoItem, Denominacion, TipoCertificado, TipoIdentificacion } from "../../components/certificados/CertificadoTemplate";
-import { construirParrafoAutomatico } from "../../components/certificados/CertificadoTemplate";
+import { sincronizarCamposParrafo } from "../../components/certificados/CertificadoTemplate";
 import { normalizarHojasGuardadas, serializarHojas, metaPorDefecto, type HojaGuardada, type HojaMeta } from "../../utils/certificadoHojas";
 
 export type PqsVariante = "75_solo" | "90_certificado_ul";
@@ -306,7 +306,8 @@ export function useCertificado(socket: Socket | null, empresa: any, activeSede: 
       textoAccion: construirTextoAccion(accionesTrabajo),
       etiquetasAdicionales: [],
       parrafoPersonalizado: "",
-      parrafoAutoBase: "",
+      segmentosSincronizados: {},
+      parrafosPorTipo: {},
     };
   };
 
@@ -341,9 +342,10 @@ export function useCertificado(socket: Socket | null, empresa: any, activeSede: 
     setHojas((prev) => prev.map((h, i) => {
       if (i !== idx) return h;
       const nuevo = updater(h);
-      if (nuevo.datos.parrafoPersonalizado && nuevo.datos.parrafoPersonalizado === nuevo.datos.parrafoAutoBase) {
-        const textoAuto = construirParrafoAutomatico(nuevo.datos);
-        return { ...nuevo, datos: { ...nuevo.datos, parrafoPersonalizado: textoAuto, parrafoAutoBase: textoAuto } };
+      const parrafoSinCambiar = nuevo.datos.parrafoPersonalizado === h.datos.parrafoPersonalizado;
+      if (nuevo.datos.parrafoPersonalizado && parrafoSinCambiar) {
+        const { html, segmentos } = sincronizarCamposParrafo(nuevo.datos.parrafoPersonalizado, nuevo.datos, nuevo.datos.segmentosSincronizados || {});
+        return { ...nuevo, datos: { ...nuevo.datos, parrafoPersonalizado: html, segmentosSincronizados: segmentos } };
       }
       return nuevo;
     }));
@@ -432,6 +434,13 @@ export function useCertificado(socket: Socket | null, empresa: any, activeSede: 
     return true;
   };
 
+  const crearEtiquetaCertificado = (valor: string, onDone?: (ok: boolean) => void) => {
+    if (!socket || !valor.trim()) return;
+    socket.emit("catalog:create", { role: "worker", type: "etiqueta_certificado", value: valor.trim() }, (res: any) => {
+      onDone?.(!!res?.success);
+    });
+  };
+
   const guardarComoPlantilla = (nombre: string, onDone?: (ok: boolean) => void) => {
     if (!socket || !empresaId || !nombre.trim()) return;
     setGuardandoPlantilla(true);
@@ -509,7 +518,22 @@ export function useCertificado(socket: Socket | null, empresa: any, activeSede: 
     actualizarHoja(hojaActivaIdx, (h) => ({ ...h, datos: { ...h.datos, ...cambios } }));
 
   const cambiarTipoCertificado = (tipo: TipoCertificado) =>
-    actualizarHoja(hojaActivaIdx, (h) => ({ ...h, datos: recalcularHoja({ ...h.datos, tipoCertificado: tipo }, h.meta) }));
+    actualizarHoja(hojaActivaIdx, (h) => {
+      const anterior = h.datos.tipoCertificado;
+      const stash = { ...(h.datos.parrafosPorTipo || {}) };
+      if (h.datos.parrafoPersonalizado) {
+        stash[anterior] = { texto: h.datos.parrafoPersonalizado, segmentos: h.datos.segmentosSincronizados || {} };
+      }
+      const restaurado = stash[tipo];
+      const datosBase = {
+        ...h.datos,
+        tipoCertificado: tipo,
+        parrafoPersonalizado: restaurado?.texto || "",
+        segmentosSincronizados: restaurado?.segmentos || {},
+        parrafosPorTipo: stash,
+      };
+      return { ...h, datos: recalcularHoja(datosBase, h.meta) };
+    });
 
   const cambiarDenominacion = (denominacion: Denominacion) => actualizar({ denominacion });
 
@@ -582,5 +606,6 @@ export function useCertificado(socket: Socket | null, empresa: any, activeSede: 
     hojas: hojas.map((h) => h.datos), hojasMeta: hojas.map((h) => h.meta), hojaActivaIdx, setHojaActivaIdx, agregarHoja, duplicarHojaActual, eliminarHoja,
     plantillaActivaId: hojaActiva.meta.plantillaId, plantillaActivaNombre: hojaActiva.meta.plantillaNombre, actualizarPlantilla,
     certificadoGuardadoId, guardandoCertificado, hayCambiosPendientes, guardarCertificado, modoEdicion,
+    crearEtiquetaCertificado,
   };
 }

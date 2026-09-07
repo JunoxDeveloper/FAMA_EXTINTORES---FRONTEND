@@ -12,7 +12,7 @@ import { TrasladoSedeModal } from "../components/modals";
 
 export default function WorkerPage({ user, onLogout }: { user: { id: string; username: string; role: string; displayName: string }; onLogout: () => void }) {
   const { socket, connected, catalogs } = useSocket(user.id, onLogout);
-  const { MARCAS, AGENTES, RECARGAS, MOTIVOS_BAJA, SERVICIOS_EXTRA } = useCatalogLists(catalogs);
+  const { MARCAS, AGENTES, RECARGAS, MOTIVOS_BAJA, SERVICIOS_EXTRA, ETIQUETAS_CERTIFICADO } = useCatalogLists(catalogs);
 
   const [view, setView] = useState<View>("home");
   const [saving, setSaving] = useState(false);
@@ -350,6 +350,7 @@ export default function WorkerPage({ user, onLogout }: { user: { id: string; use
             deleteExtintorSilent={deleteExtintorSilent}
             autoAsociarUid={scanUidParaAsociar}
             onAutoAsociarConsumido={() => setScanUidParaAsociar(null)}
+            etiquetasDisponibles={ETIQUETAS_CERTIFICADO}
           />
         )}
 

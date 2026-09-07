@@ -8,6 +8,7 @@ export function useCatalogLists(catalogs: Catalogs) {
   const SERVICIOS_EXTRA = catalogs.serviciosExtra.map((c) => c.value);
   const CATEGORIAS_INVENTARIO = catalogs.categoriasInventario.map((c) => c.value);
   const CAPACIDADES = catalogs.capacidades.map((c) => c.value);
+  const ETIQUETAS_CERTIFICADO = catalogs.etiquetasCertificado.map((c) => c.value);
 
-  return { MARCAS, AGENTES, RECARGAS, MOTIVOS_BAJA, SERVICIOS_EXTRA, CATEGORIAS_INVENTARIO, CAPACIDADES };
+  return { MARCAS, AGENTES, RECARGAS, MOTIVOS_BAJA, SERVICIOS_EXTRA, CATEGORIAS_INVENTARIO, CAPACIDADES, ETIQUETAS_CERTIFICADO };
 }

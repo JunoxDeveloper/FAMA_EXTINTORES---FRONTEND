@@ -5,7 +5,7 @@ import CertificadoPreview from "../certificados/CertificadoPreview";
 import type { CertificadoDatos, Denominacion, TipoCertificado, TipoIdentificacion } from "../certificados/CertificadoTemplate";
 import { PQS_TIPO_LABEL, PQS_VARIANTES, ESTADO_NUEVO_VENTA, type PqsVariante, type AccionTrabajo } from "../../hooks/dashboard/useCertificado";
 import { construirEtiquetaHoja, type HojaMeta } from "../../utils/certificadoHojas";
-import { MESES, DISTRITOS_LIMA, ETIQUETAS_ADICIONALES_DISPONIBLES } from "../../constants";
+import { MESES, DISTRITOS_LIMA } from "../../constants";
 import { ModalSection, ModalField, modalInput } from "../ui/ModalUI";
 
 interface Props {
@@ -48,6 +48,8 @@ interface Props {
   onGuardarCertificado: (onDone?: (ok: boolean) => void) => void;
   modoEdicion: boolean;
   onUsarModoEstandar?: () => void;
+  etiquetasDisponibles: string[];
+  onCrearEtiqueta?: (valor: string, onDone?: (ok: boolean) => void) => void;
 }
 
 const formatPlaca = (raw: string) => {
@@ -114,14 +116,16 @@ function ColumnaChip({ activa, label, ayuda, onToggle }: { activa: boolean; labe
 
 function EditorParrafo({ valorInicial, onChange }: { valorInicial: string; onChange: (html: string) => void }) {
   const ref = useRef<HTMLDivElement>(null);
-  const ultimoValorPropio = useRef<string | null>(null);
+  const cambioPropio = useRef(false);
   const [negritaActiva, setNegritaActiva] = useState(false);
 
   useEffect(() => {
     if (!ref.current) return;
-    if (ultimoValorPropio.current === valorInicial) return;
+    if (cambioPropio.current) {
+      cambioPropio.current = false;
+      return;
+    }
     ref.current.innerHTML = valorInicial;
-    ultimoValorPropio.current = valorInicial;
   }, [valorInicial]);
 
   const actualizarEstadoNegrita = () => {
@@ -131,7 +135,7 @@ function EditorParrafo({ valorInicial, onChange }: { valorInicial: string; onCha
   const handleInput = () => {
     if (!ref.current) return;
     const html = sanitizarHtmlBold(ref.current.innerHTML);
-    ultimoValorPropio.current = html;
+    cambioPropio.current = true;
     onChange(html);
     actualizarEstadoNegrita();
   };
@@ -177,11 +181,13 @@ export default function CertificadoModal({
   hojas, hojasMeta, hojaActivaIdx, onSetHojaActivaIdx, onAgregarHoja, onDuplicarHoja, onEliminarHoja,
   plantillaActivaId, plantillaActivaNombre, onActualizarPlantilla,
   certificadoGuardadoId, guardandoCertificado, hayCambiosPendientes, onGuardarCertificado, modoEdicion, onUsarModoEstandar,
+  etiquetasDisponibles, onCrearEtiqueta,
 }: Props) {
   const [vistaMovil, setVistaMovil] = useState<"datos" | "preview">("datos");
   const [editandoParrafo, setEditandoParrafo] = useState(false);
   const [nombrePlantilla, setNombrePlantilla] = useState("");
   const [confirmarActualizarPlantilla, setConfirmarActualizarPlantilla] = useState(false);
+  const [nuevaEtiqueta, setNuevaEtiqueta] = useState("");
   const [pasoActivo, setPasoActivo] = useState(0);
 
   useEffect(() => {
@@ -189,6 +195,7 @@ export default function CertificadoModal({
       setVistaMovil("datos");
       setEditandoParrafo(!!datos.parrafoPersonalizado);
       setNombrePlantilla("");
+      setNuevaEtiqueta("");
       setPasoActivo(0);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -542,9 +549,9 @@ export default function CertificadoModal({
                         valorInicial={datos.parrafoPersonalizado || ""}
                         onChange={(html) => onChange({ parrafoPersonalizado: html })}
                       />
-                      <p className="text-[10px] text-zinc-600 -mt-1">Los cambios en RUC, tipo de trabajo, normas y etiquetas siguen actualizando este texto mientras no lo reescribas manualmente.</p>
+                      <p className="text-[10px] text-zinc-600 -mt-1">Los cambios en RUC, ubicación, tipo de agente, normas y etiquetas se siguen reflejando aquí automáticamente, incluso si editas el texto.</p>
                       <button
-                        onClick={() => { onChange({ parrafoPersonalizado: "", parrafoAutoBase: "" }); setEditandoParrafo(false); }}
+                        onClick={() => { onChange({ parrafoPersonalizado: "" }); setEditandoParrafo(false); }}
                         className="self-start text-[11px] font-bold text-zinc-400 hover:text-zinc-200"
                       >
                         ↺ Restablecer texto automático
@@ -554,7 +561,7 @@ export default function CertificadoModal({
                     <button
                       onClick={() => {
                         const textoAuto = construirParrafoAutomatico(datos);
-                        onChange({ parrafoPersonalizado: textoAuto, parrafoAutoBase: textoAuto });
+                        onChange({ parrafoPersonalizado: textoAuto });
                         setEditandoParrafo(true);
                       }}
                       className="self-start px-3.5 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-bold text-zinc-200 transition-all"
@@ -596,9 +603,9 @@ export default function CertificadoModal({
                     833.030
                   </span>
                 </div>
-                <p className="text-[11px] text-zinc-500 -mt-1">Agrega una o varias etiquetas adicionales (opcional)</p>
+                <p className="text-[11px] text-zinc-500 -mt-1">Selecciona una o varias normas/etiquetas adicionales (opcional)</p>
                 <div className="flex flex-wrap gap-1.5">
-                  {ETIQUETAS_ADICIONALES_DISPONIBLES.map((etq) => (
+                  {etiquetasDisponibles.map((etq) => (
                     <ColumnaChip
                       key={etq}
                       label={etq}
@@ -612,6 +619,32 @@ export default function CertificadoModal({
                     />
                   ))}
                 </div>
+                {onCrearEtiqueta && (
+                  <div className="flex gap-2 pt-1">
+                    <input
+                      value={nuevaEtiqueta}
+                      onChange={(e) => setNuevaEtiqueta(e.target.value)}
+                      placeholder="Crear nueva norma/etiqueta..."
+                      className={`${modalInput} flex-1`}
+                    />
+                    <button
+                      onClick={() => {
+                        const valor = nuevaEtiqueta.trim();
+                        if (!valor) return;
+                        onCrearEtiqueta(valor, (ok) => {
+                          if (ok) {
+                            onChange({ etiquetasAdicionales: [...datos.etiquetasAdicionales, valor] });
+                            setNuevaEtiqueta("");
+                          }
+                        });
+                      }}
+                      disabled={!nuevaEtiqueta.trim()}
+                      className="px-3.5 py-2.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-bold text-zinc-200 disabled:opacity-50 transition-all whitespace-nowrap"
+                    >
+                      + Crear
+                    </button>
+                  </div>
+                )}
               </div>
             </ModalSection>
               )}

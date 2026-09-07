@@ -10,7 +10,7 @@ export default function HistorialRegistroView() {
   const { mes, registroId } = useParams<{ mes: string; registroId: string }>();
   const navigate = useNavigate();
   const scope = useEmpresaScope() as any;
-  const { selectedEmpresa, customOrders, activeSede, socket, extintores, extintorForm } = scope;
+  const { selectedEmpresa, customOrders, activeSede, socket, extintores, extintorForm, catalogLists } = scope;
 
   const { servicios, deleteServicio, addExtintorToServicio, setExtintorEstado } =
     useServicios(socket, selectedEmpresa?.id, activeSede?.id ?? null);
@@ -243,6 +243,8 @@ export default function HistorialRegistroView() {
         hayCambiosPendientes={certificado.hayCambiosPendientes}
         onGuardarCertificado={certificado.guardarCertificado}
         modoEdicion={certificado.modoEdicion}
+        etiquetasDisponibles={catalogLists.ETIQUETAS_CERTIFICADO}
+        onCrearEtiqueta={certificado.crearEtiquetaCertificado}
         onUsarModoEstandar={certificado.usarModoEstandar}
       />
     </div>

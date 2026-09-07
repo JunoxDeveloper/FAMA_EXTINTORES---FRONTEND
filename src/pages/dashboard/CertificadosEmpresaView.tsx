@@ -14,7 +14,7 @@ const labelMes = (mesEtiqueta: string): string => {
 
 export default function CertificadosEmpresaView() {
   const scope = useEmpresaScope() as any;
-  const { socket, selectedEmpresa, activeSede, sedes, extintores } = scope;
+  const { socket, selectedEmpresa, activeSede, sedes, extintores, catalogLists } = scope;
   const sedeId: string | null = activeSede ? activeSede.id : null;
   const hasSedes = (sedes?.sedes?.length || 0) > 0;
 
@@ -215,6 +215,8 @@ export default function CertificadosEmpresaView() {
         hayCambiosPendientes={certificado.hayCambiosPendientes}
         onGuardarCertificado={certificado.guardarCertificado}
         modoEdicion={certificado.modoEdicion}
+        etiquetasDisponibles={catalogLists.ETIQUETAS_CERTIFICADO}
+        onCrearEtiqueta={certificado.crearEtiquetaCertificado}
         onUsarModoEstandar={certificado.usarModoEstandar}
       />
     </div>

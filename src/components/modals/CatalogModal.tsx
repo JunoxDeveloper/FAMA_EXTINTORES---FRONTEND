@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import ScrollableRow from "../ui/ScrollableRow";
 
 export default function CatalogModal({ isOpen, onClose, catalogs, socket, userRole }: any) {
   const [activeTab, setActiveTab] = useState("marca");
@@ -25,6 +26,7 @@ export default function CatalogModal({ isOpen, onClose, catalogs, socket, userRo
     { id: "servicio_extra", label: "Servicios Extra" },
     { id: "categoria_inventario", label: "Categorías Inventario" },
     { id: "capacidad", label: "Calidad de Polvo" },
+    { id: "etiqueta_certificado", label: "Normas y Etiquetas de Certificado" },
   ];
 
   const getList = () => {
@@ -38,6 +40,7 @@ export default function CatalogModal({ isOpen, onClose, catalogs, socket, userRo
       else if (activeTab === "servicio_extra") items = catalogs.serviciosExtra || [];
       else if (activeTab === "categoria_inventario") items = catalogs.categoriasInventario || [];
       else if (activeTab === "capacidad") items = catalogs.capacidades || [];
+      else if (activeTab === "etiqueta_certificado") items = catalogs.etiquetasCertificado || [];
     }
 
     return [...items].sort((a, b) => (a.value || "").localeCompare(b.value || "", "es"));
@@ -83,7 +86,7 @@ export default function CatalogModal({ isOpen, onClose, catalogs, socket, userRo
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-      <div className="bg-zinc-950 border border-zinc-800 rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
+      <div className="bg-zinc-950 border border-zinc-800 rounded-2xl w-full max-w-3xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
         <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/50 shrink-0">
           <div className="flex items-center gap-4">
             <h3 className="text-lg font-black text-white flex items-center gap-2">📖 Gestión de Catálogos</h3>
@@ -100,13 +103,15 @@ export default function CatalogModal({ isOpen, onClose, catalogs, socket, userRo
           <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-xl bg-zinc-900 hover:bg-zinc-800 text-zinc-500 hover:text-white transition-colors">✕</button>
         </div>
 
-        <div className="flex overflow-x-auto p-4 gap-2 bg-zinc-900/20 border-b border-zinc-800 shrink-0 scrollbar-hide">
-          {TABS.map(t => (
-            <button key={t.id} onClick={() => { setActiveTab(t.id); setEditingId(null); setShowArchived(false); }}
-              className={`px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition-all ${activeTab === t.id ? "bg-red-600 text-white shadow-md" : "bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 border border-zinc-800"}`}>
-              {t.label}
-            </button>
-          ))}
+        <div className="p-4 bg-zinc-900/20 border-b border-zinc-800 shrink-0">
+          <ScrollableRow className="gap-2" botonesSiempreVisibles>
+            {TABS.map(t => (
+              <button key={t.id} onClick={() => { setActiveTab(t.id); setEditingId(null); setShowArchived(false); }}
+                className={`shrink-0 px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition-all ${activeTab === t.id ? "bg-red-600 text-white shadow-md" : "bg-zinc-900 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 border border-zinc-800"}`}>
+                {t.label}
+              </button>
+            ))}
+          </ScrollableRow>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-2">

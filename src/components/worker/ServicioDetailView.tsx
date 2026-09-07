@@ -28,12 +28,13 @@ interface ServicioDetailViewProps {
     deleteExtintorSilent: (rowIndex: number) => void;
     autoAsociarUid?: string | null;
     onAutoAsociarConsumido?: () => void;
+    etiquetasDisponibles: string[];
 }
 
 export default function ServicioDetailView({
     servicio, extintores, servicios, empresa, activeId, socket, hasSedes, sedeNameById, onDelete, onGuardarFechas,
     addExtintorToServicio, removeExtintorDeServicio, setExtintorEstado, onNuevoExtintor, onEditarExtintor, deleteExtintorSilent,
-    autoAsociarUid, onAutoAsociarConsumido,
+    autoAsociarUid, onAutoAsociarConsumido, etiquetasDisponibles,
 }: ServicioDetailViewProps) {
     const [asociarModal, setAsociarModal] = useState(false);
     const [qrModal, setQrModal] = useState(false);
@@ -290,6 +291,8 @@ export default function ServicioDetailView({
                 hayCambiosPendientes={certificado.hayCambiosPendientes}
                 onGuardarCertificado={certificado.guardarCertificado}
                 modoEdicion={certificado.modoEdicion}
+                etiquetasDisponibles={etiquetasDisponibles}
+                onCrearEtiqueta={certificado.crearEtiquetaCertificado}
                 onUsarModoEstandar={certificado.usarModoEstandar}
             />
         </div>

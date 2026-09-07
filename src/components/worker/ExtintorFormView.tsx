@@ -120,13 +120,13 @@ export default function ExtintorFormView({
                 />
             )}
 
-            <button
+            {/* <button
                 type="button"
                 onClick={() => setVoiceModalOpen(true)}
                 className="self-start flex items-center gap-2 px-4 py-2.5 rounded-xl bg-zinc-900 hover:bg-zinc-800 text-white text-sm font-black shadow-md active:scale-95 transition-all"
             >
                 🎤 Registrar por Voz
-            </button>
+            </button> */}
 
             <Card title={`🧯 ${editingRow !== null ? "Editar Extintor" : "Nuevo Extintor"}`}>
                 <div className="grid grid-cols-2 md:grid-cols-2 gap-4 md:gap-6">
