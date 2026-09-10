@@ -14,6 +14,7 @@ export function useCustomOrders(
   const campoWeight = variant === "servicio" ? "servicioWeightOrder" : "weightOrder";
   const campoEstado = variant === "servicio" ? "servicioEstadoOrder" : "estadoOrder";
   const campoAgente = variant === "servicio" ? "servicioAgenteOrder" : "agenteOrder";
+  const campoSede = variant === "servicio" ? "servicioSedeOrder" : "sedeOrder";
 
   const [weightOrderModal, setWeightOrderModal] = useState(false);
   const [customWeightOrder, setCustomWeightOrder] = useState<string[]>([]);
@@ -24,19 +25,24 @@ export function useCustomOrders(
   const [agenteOrderModal, setAgenteOrderModal] = useState(false);
   const [customAgenteOrder, setCustomAgenteOrder] = useState<string[]>([]);
 
+  const [sedeOrderModal, setSedeOrderModal] = useState(false);
+  const [customSedeOrder, setCustomSedeOrder] = useState<string[]>([]);
+
   const setFromEmpresaData = (data: EmpresaData) => {
     setCustomWeightOrder((data as any)[campoWeight] || []);
     setCustomEstadoOrder((data as any)[campoEstado] || []);
     setCustomAgenteOrder((data as any)[campoAgente] || []);
+    setCustomSedeOrder((data as any)[campoSede] || []);
   };
 
-  const persistOrders = (overrides: Partial<{ weightOrder: string[]; estadoOrder: string[]; agenteOrder: string[] }>) => {
+  const persistOrders = (overrides: Partial<{ weightOrder: string[]; estadoOrder: string[]; agenteOrder: string[]; sedeOrder: string[] }>) => {
     if (!socket || !selectedEmpresa?.id) return;
     socket.emit("empresa:save", {
       id: selectedEmpresa.id,
       [campoWeight]: overrides.weightOrder ?? customWeightOrder,
       [campoEstado]: overrides.estadoOrder ?? customEstadoOrder,
       [campoAgente]: overrides.agenteOrder ?? customAgenteOrder,
+      [campoSede]: overrides.sedeOrder ?? customSedeOrder,
     });
   };
 
@@ -80,6 +86,10 @@ export function useCustomOrders(
     setAgenteOrderModal,
     customAgenteOrder,
     setCustomAgenteOrder,
+    sedeOrderModal,
+    setSedeOrderModal,
+    customSedeOrder,
+    setCustomSedeOrder,
     setFromEmpresaData,
     persistOrders,
   };

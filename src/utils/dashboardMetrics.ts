@@ -38,23 +38,28 @@ export function filterEmpresas(
 }
 
 export function getDuplicateSets(extintores: Extintor[]) {
+  const claveSede = (e: Extintor) => e.sedeId || "__sin_sede__";
   const serieCounts: Record<string, number> = {};
   const internoCounts: Record<string, number> = {};
 
-  extintores.forEach((e) => {
-    const sOrig = e.nSerie?.trim() || "";
-    const iOrig = e.nInterno?.trim() || "";
-    const sUpper = sOrig.toUpperCase();
-    const iUpper = iOrig.toUpperCase();
+  extintores
+    .filter((e) => e.estadoExtintor !== "De Baja")
+    .forEach((e) => {
+      const sOrig = e.nSerie?.trim() || "";
+      const iOrig = e.nInterno?.trim() || "";
+      const sUpper = sOrig.toUpperCase();
+      const iUpper = iOrig.toUpperCase();
 
-    if (sOrig && sUpper !== "S/N" && sUpper !== "—") {
-      serieCounts[sOrig] = (serieCounts[sOrig] || 0) + 1;
-    }
-    
-    if (iOrig && iUpper !== "S/TAG" && iUpper !== "S/N" && iUpper !== "—") {
-      internoCounts[iOrig] = (internoCounts[iOrig] || 0) + 1;
-    }
-  });
+      if (sOrig && sUpper !== "S/N" && sUpper !== "—") {
+        const clave = `${claveSede(e)}|${sOrig}`;
+        serieCounts[clave] = (serieCounts[clave] || 0) + 1;
+      }
+
+      if (iOrig && iUpper !== "S/TAG" && iUpper !== "S/N" && iUpper !== "—") {
+        const clave = `${claveSede(e)}|${iOrig}`;
+        internoCounts[clave] = (internoCounts[clave] || 0) + 1;
+      }
+    });
 
   const duplicateSeries = new Set(Object.keys(serieCounts).filter(k => serieCounts[k] > 1));
   const duplicateInternos = new Set(Object.keys(internoCounts).filter(k => internoCounts[k] > 1));

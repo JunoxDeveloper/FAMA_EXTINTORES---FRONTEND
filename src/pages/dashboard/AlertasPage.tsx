@@ -430,23 +430,33 @@ export default function AlertasPage({ socket }: { socket: Socket | null }) {
                     </div>
 
                     {esMultisede ? (
-                      empresa.sedes.map((sede: any) => (
-                        <div key={sede.sedeId || "__sin_sede__"} className="rounded-xl border border-zinc-800/60 overflow-hidden">
-                          <div className="px-4 py-3 bg-zinc-900/60 flex flex-wrap items-center justify-between gap-2">
-                            <p className="text-sm font-bold text-zinc-200">{sede.nombre ? `📍 ${sede.nombre}` : "Sin sede asignada"}</p>
-                            {empresa.celular && (
-                              <a href={`https://wa.me/${numeroWhatsapp(empresa.celular)}?text=${mensajeWhatsapp(empresa.razonSocial, sede.alertas)}`} target="_blank" rel="noreferrer" className="text-xs font-bold text-emerald-400 hover:text-emerald-300 px-3 py-1.5 rounded-lg bg-emerald-950/30 hover:bg-emerald-900/40 border border-emerald-900/40">📲 Contactar</a>
+                      empresa.sedes.map((sede: any) => {
+                        const sedeKey = `${empresa.empresaId}::${sede.sedeId || "sin-sede"}`;
+                        const sedeAbierta = !!expanded[sedeKey];
+                        return (
+                          <div key={sede.sedeId || "__sin_sede__"} className="rounded-xl border border-zinc-800/60 overflow-hidden">
+                            <button onClick={() => toggle(sedeKey)} className={`w-full px-4 py-3 flex flex-wrap items-center justify-between gap-2 text-left transition-colors ${sedeAbierta ? "bg-zinc-800/40" : "bg-zinc-900/60 hover:bg-zinc-800/60"}`}>
+                              <span className="flex items-center gap-2">
+                                <span className={`w-6 h-6 rounded-full bg-zinc-950/50 border border-zinc-800 flex items-center justify-center text-zinc-400 text-[10px] transition-transform duration-300 ${sedeAbierta ? "rotate-180" : ""}`}>▼</span>
+                                <span className="text-sm font-bold text-zinc-200">{sede.nombre ? `📍 ${sede.nombre}` : "Sin sede asignada"}</span>
+                                <span className="text-[10px] font-bold text-zinc-500 bg-zinc-950/40 px-1.5 py-0.5 rounded-md">{sede.alertas.length}</span>
+                              </span>
+                              {empresa.celular && (
+                                <a href={`https://wa.me/${numeroWhatsapp(empresa.celular)}?text=${mensajeWhatsapp(empresa.razonSocial, sede.alertas)}`} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-xs font-bold text-emerald-400 hover:text-emerald-300 px-3 py-1.5 rounded-lg bg-emerald-950/30 hover:bg-emerald-900/40 border border-emerald-900/40">📲 Contactar</a>
+                              )}
+                            </button>
+                            {sedeAbierta && (
+                              <div className="p-3 bg-zinc-950/20">
+                                {mesSeleccionado === "" ? (
+                                  <TablaAlertasPorMes alertas={sede.alertas} onDescartar={descartarAlerta} />
+                                ) : (
+                                  <TablaAlertas alertas={sede.alertas} onDescartar={descartarAlerta} />
+                                )}
+                              </div>
                             )}
                           </div>
-                          <div className="p-3 bg-zinc-950/20">
-                            {mesSeleccionado === "" ? (
-                              <TablaAlertasPorMes alertas={sede.alertas} onDescartar={descartarAlerta} />
-                            ) : (
-                              <TablaAlertas alertas={sede.alertas} onDescartar={descartarAlerta} />
-                            )}
-                          </div>
-                        </div>
-                      ))
+                        );
+                      })
                     ) : mesSeleccionado === "" ? (
                       <TablaAlertasPorMes alertas={todasLasAlertas} onDescartar={descartarAlerta} />
                     ) : (

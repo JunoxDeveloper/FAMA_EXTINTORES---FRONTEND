@@ -38,6 +38,8 @@ export type EmpresaData = {
   servicioWeightOrder?: string[];
   servicioEstadoOrder?: string[];
   servicioAgenteOrder?: string[];
+  sedeOrder?: string[];
+  servicioSedeOrder?: string[];
   slug?: string;
   sedes?: Sede[];
   tipoCliente?: string | null;

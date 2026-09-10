@@ -14,3 +14,4 @@ export { useCotizaciones } from "./useCotizaciones";
 export { useCertificado } from "./useCertificado";
 export { useCertificados } from "./useCertificados";
 export { useServiciosRecientes } from "./useServiciosRecientes";
+export { useFusionEmpresas } from "./useFusionEmpresas";

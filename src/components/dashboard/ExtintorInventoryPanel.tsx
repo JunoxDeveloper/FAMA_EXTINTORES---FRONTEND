@@ -49,13 +49,8 @@ export default function ExtintorInventoryPanel({ variant, onExportExcel, exporti
     const showSedeExtras = variant === "resumen" && !activeSede && hasSedes;
     const sedeNameById: Record<string, string> = Object.fromEntries(sedesList.map((s) => [s.id, s.nombre]));
 
-    const [localSedeOrder, setLocalSedeOrder] = useState<string[]>([]);
-    const [localSedeModal, setLocalSedeModal] = useState(false);
-
     const isScopedToRegistro = !!extintoresOverride;
-    const { customWeightOrder, customEstadoOrder, customAgenteOrder, setCustomWeightOrder, setCustomEstadoOrder, setCustomAgenteOrder, weightOrderModal, setWeightOrderModal, estadoOrderModal, setEstadoOrderModal, agenteOrderModal, setAgenteOrderModal, persistOrders } = isScopedToRegistro ? scope.customOrdersServicio : scope.customOrders;
-
-    const customSedeOrder = localSedeOrder;
+    const { customWeightOrder, customEstadoOrder, customAgenteOrder, customSedeOrder, setCustomWeightOrder, setCustomEstadoOrder, setCustomAgenteOrder, setCustomSedeOrder, weightOrderModal, setWeightOrderModal, estadoOrderModal, setEstadoOrderModal, agenteOrderModal, setAgenteOrderModal, sedeOrderModal, setSedeOrderModal, persistOrders } = isScopedToRegistro ? scope.customOrdersServicio : scope.customOrders;
 
     const pesoEntriesWithAgents = getPesoEntriesWithAgents(pesoCounts, pesoAgentBreakdown, customWeightOrder);
 
@@ -217,7 +212,7 @@ export default function ExtintorInventoryPanel({ variant, onExportExcel, exporti
                         <div className="flex gap-2 ml-auto sm:ml-0 flex-wrap">
                             {showSedeExtras && (
                                 <button
-                                    onClick={() => setLocalSedeModal(true)}
+                                    onClick={() => setSedeOrderModal(true)}
                                     className="px-3.5 py-2 rounded-xl text-xs font-bold text-zinc-300 hover:text-white bg-zinc-800 border border-zinc-700 hover:bg-zinc-700 transition-all flex items-center gap-1.5"
                                 >
                                     <span className="text-sm">🏬</span>
@@ -287,6 +282,9 @@ export default function ExtintorInventoryPanel({ variant, onExportExcel, exporti
                             <tbody className="divide-y divide-zinc-800/40">
                                 {sortedExt.map((ext, i) => {
                                     const badges = serviceBadge(ext.ma, ext.recarga, ext.ph);
+                                    const claveSedeExt = ext.sedeId || "__sin_sede__";
+                                    const esSerieDuplicada = ext.nSerie && duplicateSeries.has(`${claveSedeExt}|${ext.nSerie.trim()}`);
+                                    const esInternoDuplicado = ext.nInterno && duplicateInternos.has(`${claveSedeExt}|${ext.nInterno.trim()}`);
                                     return (
                                         <tr
                                             key={ext.rowIndex}
@@ -295,13 +293,13 @@ export default function ExtintorInventoryPanel({ variant, onExportExcel, exporti
                                             <td className="px-5 py-3.5 text-red-500 font-black">
                                                 {i + 1}
                                             </td>
-                                            <td className={`px-5 py-3.5 transition-colors ${ext.nSerie && duplicateSeries.has(ext.nSerie.trim()) ? "bg-yellow-500/20" : ""}`}>
-                                                <span className={`font-bold ${ext.nSerie && duplicateSeries.has(ext.nSerie.trim()) ? "text-yellow-400" : "text-zinc-100"}`} title={ext.nSerie && duplicateSeries.has(ext.nSerie.trim()) ? "⚠️ Número de Serie duplicado en el inventario" : ""}>
+                                            <td className={`px-5 py-3.5 transition-colors ${esSerieDuplicada ? "bg-yellow-500/20" : ""}`}>
+                                                <span className={`font-bold ${esSerieDuplicada ? "text-yellow-400" : "text-zinc-100"}`} title={esSerieDuplicada ? "⚠️ Número de Serie duplicado en esta sede" : ""}>
                                                     {ext.nSerie || "—"}
                                                 </span>
                                             </td>
-                                            <td className={`px-5 py-3.5 transition-colors ${ext.nInterno && duplicateInternos.has(ext.nInterno.trim()) ? "bg-yellow-500/20" : ""}`}>
-                                                <span className={`font-medium ${ext.nInterno && duplicateInternos.has(ext.nInterno.trim()) ? "text-yellow-400" : "text-zinc-400"}`} title={ext.nInterno && duplicateInternos.has(ext.nInterno.trim()) ? "⚠️ Número Interno duplicado en el inventario" : ""}>
+                                            <td className={`px-5 py-3.5 transition-colors ${esInternoDuplicado ? "bg-yellow-500/20" : ""}`}>
+                                                <span className={`font-medium ${esInternoDuplicado ? "text-yellow-400" : "text-zinc-400"}`} title={esInternoDuplicado ? "⚠️ Número Interno duplicado en esta sede" : ""}>
                                                     {ext.nInterno || "—"}
                                                 </span>
                                             </td>
@@ -508,13 +506,13 @@ export default function ExtintorInventoryPanel({ variant, onExportExcel, exporti
             />
             {showSedeExtras && (
                 <WeightSortModal
-                    isOpen={localSedeModal}
-                    onClose={() => setLocalSedeModal(false)}
+                    isOpen={sedeOrderModal}
+                    onClose={() => setSedeOrderModal(false)}
                     availableWeights={[...sedesList.map((s) => s.nombre), "Sin sede"]}
                     currentOrder={customSedeOrder}
                     title="🏬 Ordenar por Sede"
                     label="Sedes Disponibles"
-                    onSave={(newOrder: string[]) => { setLocalSedeOrder(newOrder); setLocalSedeModal(false); }}
+                    onSave={(newOrder: string[]) => { setCustomSedeOrder(newOrder); setSedeOrderModal(false); persistOrders({ sedeOrder: newOrder }); }}
                 />
             )}
             <HistorialExtintorModal

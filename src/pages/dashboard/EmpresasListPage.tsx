@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import type { Socket } from "socket.io-client";
 import { useDashboardFilters, useEmpresaForm, useServiciosRecientes } from "../../hooks/dashboard";
 import { useEmpresaSelection } from "../../hooks/dashboard";
-import { EmpresaModal } from "../../components/modals";
+import { EmpresaModal, FusionEmpresasModal } from "../../components/modals";
 import ScrollableRow from "../../components/ui/ScrollableRow";
 import { TIPO_CLIENTE_LABELS, esMultisede, iconoEmpresa, CLASIFICACION_FILTROS, filtrarPorClasificacion, ordinalServicio, type ClasificacionFiltro } from "../../utils/helpers";
 import { MESES } from "../../constants";
@@ -50,6 +50,8 @@ export default function EmpresasListPage({ socket, role }: { socket: Socket | nu
 
   const [fTipo, setFTipo] = useState<ClasificacionFiltro>("");
   const filteredFinal = filtrarPorClasificacion(filtered, fTipo);
+  const [fusionModal, setFusionModal] = useState(false);
+  const puedeFusionar = role === "admin" || role === "boss";
 
   return (
     <>
@@ -133,6 +135,14 @@ export default function EmpresasListPage({ socket, role }: { socket: Socket | nu
       >
         <span className="text-lg leading-none">+</span> Nueva Empresa
       </button>
+      {puedeFusionar && (
+        <button
+          onClick={() => setFusionModal(true)}
+          className="w-full md:w-auto px-5 py-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-sm font-bold text-zinc-200 transition-all active:scale-95 shrink-0 flex items-center justify-center gap-2"
+        >
+          🔀 Unificar Empresas
+        </button>
+      )}
     </div>
 
     {/* Grid de Empresas */}
@@ -193,6 +203,9 @@ export default function EmpresasListPage({ socket, role }: { socket: Socket | nu
 
       {createEmpresaModal && empresaForm && (
         <EmpresaModal title="🏢 Nueva Empresa" form={empresaForm} setForm={setEmpresaForm} onClose={() => setCreateEmpresaModal(false)} onSave={saveNewEmpresa} saving={saving} />
+      )}
+      {puedeFusionar && (
+        <FusionEmpresasModal isOpen={fusionModal} onClose={() => setFusionModal(false)} socket={socket} empresas={empresas} />
       )}
     </>
   );
