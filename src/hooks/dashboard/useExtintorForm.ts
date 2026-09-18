@@ -34,7 +34,7 @@ export function useExtintorForm(
   };
 
   const construirPayload = () => {
-    const { evidencia, evidenciaCount, deletedAt, ...formSinFlags } = extintorForm as any;
+    const { evidencia, evidenciaCount, evidenciaFotos, deletedAt, ...formSinFlags } = extintorForm as any;
     const bloqueado = estadoBloqueaServicio(extintorForm.estadoExtintor || "");
     const componentesBloqueados = estadoBloqueaComponentes(extintorForm.estadoExtintor || "");
 
