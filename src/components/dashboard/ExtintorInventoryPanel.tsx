@@ -51,15 +51,10 @@ export default function ExtintorInventoryPanel({ variant, onExportExcel, exporti
 
     const isScopedToRegistro = !!extintoresOverride;
     const {
-        customWeightOrder: scopedWeightOrder, customEstadoOrder: scopedEstadoOrder, customAgenteOrder: scopedAgenteOrder, customSedeOrder: scopedSedeOrder,
+        customWeightOrder, customEstadoOrder, customAgenteOrder, customSedeOrder,
         setCustomWeightOrder, setCustomEstadoOrder, setCustomAgenteOrder, setCustomSedeOrder,
         weightOrderModal, setWeightOrderModal, estadoOrderModal, setEstadoOrderModal, agenteOrderModal, setAgenteOrderModal, sedeOrderModal, setSedeOrderModal, persistOrders,
     } = isScopedToRegistro ? scope.customOrdersServicio : scope.customOrders;
-
-    const customWeightOrder = isScopedToRegistro && scopedWeightOrder.length === 0 ? scope.customOrders.customWeightOrder : scopedWeightOrder;
-    const customEstadoOrder = isScopedToRegistro && scopedEstadoOrder.length === 0 ? scope.customOrders.customEstadoOrder : scopedEstadoOrder;
-    const customAgenteOrder = isScopedToRegistro && scopedAgenteOrder.length === 0 ? scope.customOrders.customAgenteOrder : scopedAgenteOrder;
-    const customSedeOrder = isScopedToRegistro && scopedSedeOrder.length === 0 ? scope.customOrders.customSedeOrder : scopedSedeOrder;
 
     const pesoEntriesWithAgents = getPesoEntriesWithAgents(pesoCounts, pesoAgentBreakdown, customWeightOrder);
 
